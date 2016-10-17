@@ -42,7 +42,7 @@ include $(CLEAR_VARS)
 NAN_PAIRING=y
 
 LOCAL_CFLAGS := -Wno-unused-parameter
-ifeq ($(TARGET_BUILD_VARIANT),userdebug)
+ifeq ($(TARGET_BUILD_VARIANT),eng)
 LOCAL_CFLAGS += "-DLOG_NDEBUG=0"
 endif
 
