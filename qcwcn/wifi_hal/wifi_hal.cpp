@@ -75,7 +75,7 @@
 #include <cld80211_lib.h>
 
 #include <sys/types.h>
-#include "list.h"
+#include "wifihal_list.h"
 #include <unistd.h>
 
 #include "sync.h"

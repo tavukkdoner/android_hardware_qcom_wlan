@@ -50,6 +50,7 @@
 
 #include "sync.h"
 
+#include "wifihal_list.h"
 #include "wifi_hal.h"
 #include "nan_i.h"
 #include "common.h"
