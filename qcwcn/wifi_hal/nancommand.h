@@ -102,6 +102,7 @@ private:
     u32 mNanDataLen;
     NanStaParameter *mStaParam;
     u8 mNmiMac[NAN_MAC_ADDR_LEN];
+    u8 mClusterAddr[NAN_MAC_ADDR_LEN];
     u32 mNanMaxPublishes;
     u32 mNanMaxSubscribes;
     NanStoreSvcParams *mStorePubParams;
@@ -227,6 +228,8 @@ public:
     /* Functions for NAN passphrase to PMK calculation */
     void saveNmi(u8 *mac);
     u8 *getNmi();
+    void saveClusterAddr(u8 *mac);
+    u8 *getClusterAddr();
     void saveServiceId(u8 *service_id, u16 sub_pub_handle,
                         u32 instance_id, NanRole Pool);
     u8 *getServiceId(u32 instance_id, NanRole Pool);
