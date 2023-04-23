@@ -288,6 +288,131 @@ static int nan_pairing_register_pasn_auth_frames(wifi_interface_handle iface)
     return 0;
 }
 
+struct wpabuf *nan_pairing_generate_rsn_ie(int akmp, int cipher, u8 *pmkid)
+{
+    u8 *pos;
+    u16 capab;
+    u32 suite;
+    size_t rsne_len;
+    struct rsn_ie_hdr *hdr;
+    struct wpabuf *buf = NULL;
+
+    ALOGD("NAN: Generate RSNE");
+
+    rsne_len = sizeof(*hdr) + RSN_SELECTOR_LEN +
+               2 + RSN_SELECTOR_LEN + 2 + RSN_SELECTOR_LEN +
+               2 + RSN_SELECTOR_LEN + 2 + (pmkid ? PMKID_LEN : 0);
+
+    buf = wpabuf_alloc(rsne_len);
+    if (!buf) {
+        ALOGE("%s: Memory allocation failed", __FUNCTION__);
+        return NULL;
+    }
+
+    if (wpabuf_tailroom(buf) < rsne_len) {
+        ALOGE("%s: wpabuf tail room small", __FUNCTION__);
+        wpabuf_free(buf);
+        return NULL;
+    }
+
+    hdr = (struct rsn_ie_hdr *)wpabuf_put(buf, rsne_len);
+    hdr->elem_id = WLAN_EID_RSN;
+    hdr->len = rsne_len - 2;
+    WPA_PUT_LE16(hdr->version, RSN_VERSION);
+    pos = (u8 *) (hdr + 1);
+
+    /* Group addressed data is not allowed */
+    RSN_SELECTOR_PUT(pos, RSN_CIPHER_SUITE_NO_GROUP_ADDRESSED);
+    pos += RSN_SELECTOR_LEN;
+
+    /* Add the pairwise cipher */
+    WPA_PUT_LE16(pos, 1);
+    pos += 2;
+    suite = wpa_cipher_to_suite(WPA_PROTO_RSN, cipher);
+    RSN_SELECTOR_PUT(pos, suite);
+    pos += RSN_SELECTOR_LEN;
+
+    /* Add the AKM suite */
+    WPA_PUT_LE16(pos, 1);
+    pos += 2;
+
+    switch (akmp) {
+    case WPA_KEY_MGMT_PASN:
+        RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_PASN);
+        break;
+#ifdef CONFIG_SAE
+    case WPA_KEY_MGMT_SAE:
+        RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_SAE);
+        break;
+#endif /* CONFIG_SAE */
+    default:
+        ALOGE("NAN: Invalid AKMP=0x%x", akmp);
+        wpabuf_free(buf);
+        return NULL;
+    }
+    pos += RSN_SELECTOR_LEN;
+
+    /* RSN Capabilities: PASN mandates both MFP capable and required */
+    capab = WPA_CAPABILITY_MFPC | WPA_CAPABILITY_MFPR;
+    WPA_PUT_LE16(pos, capab);
+    pos += 2;
+
+    if (pmkid) {
+        ALOGD("NAN: Adding PMKID");
+
+        WPA_PUT_LE16(pos, 1);
+        pos += 2;
+        os_memcpy(pos, pmkid, PMKID_LEN);
+        pos += PMKID_LEN;
+    } else {
+        WPA_PUT_LE16(pos, 0);
+        pos += 2;
+    }
+
+    /* Group addressed management is not allowed */
+    RSN_SELECTOR_PUT(pos, RSN_CIPHER_SUITE_NO_GROUP_ADDRESSED);
+
+    return buf;
+}
+
+struct wpabuf *nan_pairing_generate_rsnxe(int akmp)
+{
+    struct wpabuf *buf = NULL;
+    size_t flen;
+    u16 capab = 0;
+
+    if (akmp == WPA_KEY_MGMT_SAE)
+        capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+
+    if (!capab) {
+        ALOGE("%s: no supported caps", __FUNCTION__);
+        return NULL; /* no supported extended RSN capabilities */
+    }
+
+    flen = (capab & 0xff00) ? 2 : 1;
+    buf = wpabuf_alloc(2 + flen);
+    if (!buf) {
+        ALOGE("%s: Memory allocation failed", __FUNCTION__);
+        return NULL;
+    }
+
+    if (wpabuf_tailroom(buf) < 2 + flen) {
+        ALOGE("%s: wpabuf tail room small", __FUNCTION__);
+        wpabuf_free(buf);
+        return NULL;
+    }
+    capab |= flen - 1; /* bit 0-3 = Field length (n - 1) */
+
+    wpabuf_put_u8(buf, WLAN_EID_RSNX);
+    wpabuf_put_u8(buf, flen);
+    wpabuf_put_u8(buf, capab & 0x00ff);
+    capab >>= 8;
+    if (capab)
+        wpabuf_put_u8(buf, capab);
+
+    return buf;
+}
+
 void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
 {
     int ret;

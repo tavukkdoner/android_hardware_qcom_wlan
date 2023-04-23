@@ -1481,6 +1481,8 @@ void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
                                        u8 *mac);
 int nan_send_tx_mgmt(void *ctx, const u8 *frame_buf, size_t frame_len,
                      int noack, unsigned int freq, unsigned int wait_dur);
+struct wpabuf *nan_pairing_generate_rsn_ie(int akmp, int cipher, u8 *pmkid);
+struct wpabuf *nan_pairing_generate_rsnxe(int akmp);
 
 #ifdef __cplusplus
 }
