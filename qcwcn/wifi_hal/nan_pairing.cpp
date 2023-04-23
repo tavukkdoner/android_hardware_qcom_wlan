@@ -122,6 +122,65 @@ void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
     }
 }
 
+static int nan_send_nl_msg_event_sock(hal_info *info, struct nl_msg *msg)
+{
+    int res = 0;
+    struct nl_cb * cb = NULL;
+
+    if (!info->event_sock) {
+        ALOGE("event socket is null");
+        return -1;
+    }
+
+    /* send message */
+    res = nl_send_auto_complete(info->event_sock, msg);
+    if (res < 0)
+           return res;
+
+    cb = nl_socket_get_cb(info->event_sock);
+
+    /* err is populated as part of finish_handler */
+    while (res > 0)
+        res = nl_recvmsgs(info->event_sock, cb);
+
+    nl_cb_put(cb);
+    return res;
+}
+
+static int nan_pairing_register_pasn_auth_frames(wifi_interface_handle iface)
+{
+    u32 idx;
+    struct nl_msg * msg;
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+
+    msg = nlmsg_alloc();
+    if (!msg) {
+        ALOGE("%s: nlmsg malloc failed", __FUNCTION__);
+        return -1;
+    }
+
+    genlmsg_put(msg, 0, 0, info->nl80211_family_id, 0, 0,
+                NL80211_CMD_REGISTER_FRAME, 0);
+
+    idx = if_nametoindex(DEFAULT_NAN_IFACE);
+    nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx);
+
+    /* wlan type:mgmt, wlan subtype: auth */
+    u16 type = (WLAN_FC_TYPE_MGMT << 2) | (WLAN_FC_STYPE_AUTH << 4);
+    /* register for PASN Authentication frames */
+    const u8 pasn_auth_match[2] = {7,0};
+    nla_put_u16(msg, NL80211_ATTR_FRAME_TYPE, type);
+    nla_put(msg, NL80211_ATTR_FRAME_MATCH, 2, pasn_auth_match);
+
+    nan_send_nl_msg_event_sock(info, msg);
+
+    if (msg)
+        nlmsg_free(msg);
+
+    return 0;
+}
+
 void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
 {
     int ret;
@@ -239,6 +298,10 @@ int secure_nan_init(wifi_interface_handle iface)
     //! Initailise peers list
     INITIALISE_LIST(&secure_nan->peers);
 
+    if (nan_pairing_register_pasn_auth_frames(iface)) {
+        ALOGE("Secure NAN Register PASN auth failed");
+        return -1;
+    }
     return 0;
 }
 
