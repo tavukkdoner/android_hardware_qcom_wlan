@@ -52,6 +52,7 @@ nan_pairing_add_peer_to_list(struct wpa_secure_nan *secure_nan, u8 *mac)
 
     mentry->pasn.cb_ctx = secure_nan->cb_ctx;
     mentry->pasn.send_mgmt = nan_send_tx_mgmt;
+    mentry->pasn.validate_custom_pmkid = nan_pairing_validate_custom_pmkid;
     wpa_pasn_reset(&mentry->pasn);
     add_to_list(&mentry->list, &secure_nan->peers);
     return mentry;
@@ -472,6 +473,46 @@ int nan_pasn_kdk_to_nan_kek(const u8 *kdk, size_t kdk_len, const u8 *spa,
 err:
     bin_clear_free(data, data_len);
     return ret;
+}
+
+int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
+                                      const u8 *pmkid)
+{
+    int ret;
+    struct nan_pairing_peer_info *entry;
+    wifi_handle handle = (wifi_handle)ctx;
+    hal_info *info = getHalInfo(handle);
+    u8 tag[NAN_IDENTITY_TAG_LEN] = {0};
+    u8 data[NIR_STR_LEN + NAN_IDENTITY_NONCE_LEN + ETH_ALEN];
+
+    if (!info && !info->secure_nan) {
+        ALOGE(" %s: HAL info or Secure NAN is NULL", __FUNCTION__);
+        return -1;
+    }
+
+    entry = nan_pairing_get_peer_from_list(info->secure_nan, (u8 *)bssid);
+    if (!entry) {
+        ALOGE(" %s: No Peer in pairing list, ADDR=" MACSTR,
+              __FUNCTION__, MAC2STR(bssid));
+        return -1;
+    }
+
+    os_memset(data, 0, sizeof(data));
+    os_memcpy(data, "NIR", NIR_STR_LEN);
+    os_memcpy(&data[NIR_STR_LEN], bssid, ETH_ALEN);
+    os_memcpy(&data[NIR_STR_LEN + ETH_ALEN], pmkid, NAN_IDENTITY_NONCE_LEN);
+
+    ret = hmac_sha256(entry->peer_nik, NAN_IDENTITY_KEY_LEN, data,
+                      sizeof(data), tag);
+    if (ret < 0) {
+        ALOGE("NAN PASN: Could not derive NIRA Tag, retval = %d", ret);
+        return -1;
+    }
+    if (os_memcmp(tag, &pmkid[NAN_IDENTITY_NONCE_LEN], NAN_IDENTITY_TAG_LEN) != 0) {
+        ALOGE("NAN PASN: NIRA TAG mismatch");
+        return -1;
+    }
+    return 0;
 }
 
 const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr)

@@ -1557,6 +1557,8 @@ int nan_pasn_kdk_to_opportunistic_npk(const u8 *kdk, size_t kdk_len,
 int nan_pasn_kdk_to_nan_kek(const u8 *kdk, size_t kdk_len, const u8 *spa,
                             const u8 *bssid, int akmp, int cipher, u8 *nan_kek,
                             size_t *nan_kek_len);
+int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
+                                      const u8 *pmkid);
 
 #ifdef __cplusplus
 }
