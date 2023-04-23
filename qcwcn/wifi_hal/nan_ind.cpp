@@ -1639,3 +1639,11 @@ int NanCommand::handleNanBootstrappingConfirm(NanBootstrappingConfirmInd *evt)
        (*mHandler.EventBootstrappingConfirm)(evt);
     return 0;
 }
+
+int NanCommand::handleNanPairingReqInd(NanPairingRequestInd *evt)
+{
+
+    if (mHandler.EventPairingRequest)
+       (*mHandler.EventPairingRequest)(evt);
+    return 0;
+}

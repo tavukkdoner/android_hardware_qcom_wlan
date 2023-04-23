@@ -248,9 +248,10 @@ public:
     void deallocSvcParams();
     void saveTransactionId(transaction_id id);
     transaction_id getTransactionId();
-    /* Functions for NAN Bootstrapping */
+    /* Functions for NAN Bootstrapping and Pairing */
     int handleNanBootstrappingReqInd(NanBootstrappingRequestInd  *evt);
     int handleNanBootstrappingConfirm(NanBootstrappingConfirmInd *evt);
+    int handleNanPairingReqInd(NanPairingRequestInd *evt);
 };
 #endif /* __WIFI_HAL_NAN_COMMAND_H__ */
 
