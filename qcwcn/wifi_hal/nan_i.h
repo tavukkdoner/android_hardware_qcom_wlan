@@ -1470,6 +1470,15 @@ struct rsn_pmksa_cache *nan_pairing_initiator_pmksa_cache_init(void);
 void nan_pairing_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
 struct rsn_pmksa_cache *nan_pairing_responder_pmksa_cache_init(void);
 void nan_pairing_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
+struct nan_pairing_peer_info*
+nan_pairing_add_peer_to_list(struct wpa_secure_nan *secure_nan, u8 *mac);
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_list(struct wpa_secure_nan *secure_nan, u8 *mac);
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_id(struct wpa_secure_nan *secure_nan, u32 pairing_id);
+void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan);
+void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
+                                       u8 *mac);
 
 #ifdef __cplusplus
 }
