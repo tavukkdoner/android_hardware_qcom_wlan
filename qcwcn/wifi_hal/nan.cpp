@@ -236,6 +236,17 @@ wifi_error nan_publish_request(transaction_id id,
         return WIFI_ERROR_UNKNOWN;
     }
 
+    if (info->secure_nan) {
+        info->secure_nan->enable_pairing_setup =
+              msg->nan_pairing_config.enable_pairing_setup;
+
+        info->secure_nan->enable_pairing_cache =
+              msg->nan_pairing_config.enable_pairing_cache;
+
+        info->secure_nan->supported_bootstrap =
+              msg->nan_pairing_config.supported_bootstrapping_methods;
+    }
+
     nanCommand = new NanCommand(wifiHandle,
                                 0,
                                 OUI_QCA,
@@ -336,6 +347,17 @@ wifi_error nan_subscribe_request(transaction_id id,
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
         return WIFI_ERROR_UNKNOWN;
+    }
+
+    if (info->secure_nan) {
+        info->secure_nan->enable_pairing_setup =
+              msg->nan_pairing_config.enable_pairing_setup;
+
+        info->secure_nan->enable_pairing_cache =
+              msg->nan_pairing_config.enable_pairing_cache;
+
+        info->secure_nan->supported_bootstrap =
+              msg->nan_pairing_config.supported_bootstrapping_methods;
     }
 
     nanCommand = new NanCommand(wifiHandle,

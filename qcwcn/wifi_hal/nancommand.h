@@ -173,6 +173,8 @@ private:
                                 char* rspBuf,
                                 NanStatsResponse *pRsp,
                                 u32 message_len);
+    void getNanReceivePairingParamsMatch(const u8* pInValue,
+                                         NanPairingConfig *pPeerPairingParams);
 
     //Function which unparses the data and calls the NotifyResponse
     int handleNdpResponse(NanResponseType ndpCmdtyp, struct nlattr **tb_vendor);

@@ -459,6 +459,20 @@ int NanCommand::getNanMatch(NanMatchInd *event)
             }
             memcpy(&event->range_info, outputTlv.value, outputTlv.length);
             break;
+        case NAN_TLV_TYPE_PAIRING_MATCH_PARAMS:
+            if (outputTlv.length != sizeof(NanFWPairingParamsMatch)) {
+                ALOGE("NAN_TLV_TYPE_PAIRING_MATCH_PARAMS"
+                      "Incorrect size:%d expecting %zu", outputTlv.length,
+                      sizeof(NanFWPairingParamsMatch));
+                break;
+            }
+            getNanReceivePairingParamsMatch(outputTlv.value,
+                                             &event->peer_pairing_config);
+            break;
+        case NAN_TLV_TYPE_NIRA_NONCE:
+        case NAN_TLV_TYPE_NIRA_TAG:
+            event->peer_pairing_config.enable_pairing_verification = 1;
+            break;
         case NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO:
             if (outputTlv.length > NAN_MAX_SDEA_SERVICE_SPECIFIC_INFO_LEN) {
                 outputTlv.length = NAN_MAX_SDEA_SERVICE_SPECIFIC_INFO_LEN;
@@ -829,6 +843,21 @@ void NanCommand::getNanReceiveSdeaCtrlParams(const u8* pInValue,
                          (NanRangingLimitState)((pInValue[0] & BIT_8) ?
                           NAN_RANGING_LIMIT_ENABLE : NAN_RANGING_LIMIT_DISABLE);
 #endif
+    }
+    return;
+}
+
+void NanCommand::getNanReceivePairingParamsMatch(const u8* pInValue,
+                                          NanPairingConfig *pPeerPairingParams)
+{
+    if (pInValue && pPeerPairingParams) {
+        NanFWPairingParamsMatch *pRsp = (NanFWPairingParamsMatch *)pInValue;
+        pPeerPairingParams->enable_pairing_setup =
+                          pRsp->pairing_setup_required;
+        pPeerPairingParams->enable_pairing_cache =
+                          pRsp->npk_nik_caching_required;
+        pPeerPairingParams->supported_bootstrapping_methods =
+                                 pRsp->bootstrapping_method_bitmap;
     }
     return;
 }

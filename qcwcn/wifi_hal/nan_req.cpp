@@ -795,6 +795,10 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
         ((pReq->range_response_cfg.publish_id ||
           pReq->range_response_cfg.ranging_response) ?
           SIZEOF_TLV_HDR + sizeof(NanFWRangeReqMsg) : 0)  +
+        ((pReq->nan_pairing_config.enable_pairing_setup ||
+          pReq->nan_pairing_config.enable_pairing_cache ||
+          pReq->nan_pairing_config.supported_bootstrapping_methods) ?
+          SIZEOF_TLV_HDR + sizeof(NanFWPairingConfigParams) : 0)  +
         (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0);
 
     if ((pReq->key_info.key_type ==  NAN_SECURITY_KEY_INPUT_PMK) &&
@@ -951,6 +955,20 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
                                                     (const u8*)&pNanFWRangingCfg, tlvs);
     }
 
+    if (pReq->nan_pairing_config.enable_pairing_setup ||
+        pReq->nan_pairing_config.enable_pairing_cache ||
+        pReq->nan_pairing_config.supported_bootstrapping_methods) {
+        NanFWPairingConfigParams pNanFWPairingCfg;
+
+        memset(&pNanFWPairingCfg, 0, sizeof(NanFWPairingConfigParams));
+        pNanFWPairingCfg.pairing_setup_required = pReq->nan_pairing_config.enable_pairing_setup;
+        pNanFWPairingCfg.npk_nik_caching_required = pReq->nan_pairing_config.enable_pairing_cache;
+        pNanFWPairingCfg.bootstrapping_method_bitmap = pReq->nan_pairing_config.supported_bootstrapping_methods;
+
+        tlvs = addTlv(NAN_TLV_TYPE_PAIRING_CONFIGURATION, sizeof(NanFWPairingConfigParams),
+                                                    (const u8*)&pNanFWPairingCfg, tlvs);
+    }
+
     if (pReq->sdea_service_specific_info_len) {
         tlvs = addTlv(NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO, pReq->sdea_service_specific_info_len,
                       (const u8*)&pReq->sdea_service_specific_info[0], tlvs);
@@ -1089,6 +1107,10 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
         ((pReq->range_response_cfg.requestor_instance_id ||
           pReq->range_response_cfg.ranging_response) ?
           SIZEOF_TLV_HDR + sizeof(NanFWRangeReqMsg) : 0) +
+        ((pReq->nan_pairing_config.enable_pairing_setup ||
+          pReq->nan_pairing_config.enable_pairing_cache ||
+          pReq->nan_pairing_config.supported_bootstrapping_methods) ?
+          SIZEOF_TLV_HDR + sizeof(NanFWPairingConfigParams) : 0)  +
         (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0);
 
     message_len += \
@@ -1250,6 +1272,20 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
                                        pReq->ranging_cfg.distance_egress_mm;
         tlvs = addTlv(NAN_TLV_TYPE_NAN_RANGING_CFG, sizeof(NanFWRangeConfigParams),
                                                     (const u8*)&pNanFWRangingCfg, tlvs);
+    }
+
+    if (pReq->nan_pairing_config.enable_pairing_setup ||
+        pReq->nan_pairing_config.enable_pairing_cache ||
+        pReq->nan_pairing_config.supported_bootstrapping_methods) {
+        NanFWPairingConfigParams pNanFWPairingCfg;
+
+        memset(&pNanFWPairingCfg, 0, sizeof(NanFWPairingConfigParams));
+        pNanFWPairingCfg.pairing_setup_required = pReq->nan_pairing_config.enable_pairing_setup;
+        pNanFWPairingCfg.npk_nik_caching_required = pReq->nan_pairing_config.enable_pairing_cache;
+        pNanFWPairingCfg.bootstrapping_method_bitmap = pReq->nan_pairing_config.supported_bootstrapping_methods;
+
+        tlvs = addTlv(NAN_TLV_TYPE_PAIRING_CONFIGURATION, sizeof(NanFWPairingConfigParams),
+                                                    (const u8*)&pNanFWPairingCfg, tlvs);
     }
 
     if (pReq->sdea_service_specific_info_len) {
