@@ -125,6 +125,7 @@ private:
     //based on the indication type
     int handleNanIndication();
     int handleNanBootstrappingIndication();
+    int handleNanSharedKeyDescIndication();
     //Various Functions to get the appropriate indications
     int getNanPublishReplied(NanPublishRepliedInd *event);
     int getNanPublishTerminated(NanPublishTerminatedInd *event);
@@ -208,7 +209,9 @@ public:
     wifi_error putNanPublishCancel(transaction_id id, const NanPublishCancelRequest *pReq);
     wifi_error putNanSubscribe(transaction_id id, const NanSubscribeRequest *pReq);
     wifi_error putNanSubscribeCancel(transaction_id id, const NanSubscribeCancelRequest *pReq);
-    wifi_error putNanTransmitFollowup(transaction_id id, const NanTransmitFollowupRequest *pReq);
+    wifi_error putNanTransmitFollowup(transaction_id id,
+                                      const NanTransmitFollowupRequest *pReq,
+                                      const NanSharedKeyRequest *key);
     wifi_error putNanStats(transaction_id id, const NanStatsRequest *pReq);
     wifi_error putNanConfig(transaction_id id, const NanConfigRequest *pReq);
     wifi_error putNanTCA(transaction_id id, const NanTCARequest *pReq);
@@ -224,6 +227,8 @@ public:
                                       u16 pub_sub_id);
     wifi_error putNanIdentityResolutionParams(transaction_id id,
                                               NanNIRARequest *pReq);
+    wifi_error putNanSharedKeyDescriptorReq(transaction_id id,
+                                       const NanSharedKeyRequest *pReq);
     /* Functions for NAN error translation
        For NanResponse, NanPublishTerminatedInd, NanSubscribeTerminatedInd,
        NanDisabledInd, NanTransmitFollowupInd:

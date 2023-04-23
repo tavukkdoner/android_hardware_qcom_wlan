@@ -459,6 +459,56 @@ cleanup:
     return ret;
 }
 
+/*  Function to send NAN shared key descriptor request to the wifi driver.*/
+wifi_error nan_sharedkey_followup_request(transaction_id id,
+                                     wifi_interface_handle iface,
+                                     NanSharedKeyRequest *msg)
+{
+    wifi_error ret;
+    NanCommand *nanCommand;
+    interface_info *ifaceInfo = getIfaceInfo(iface);
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+
+    if (info == NULL) {
+        ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    nanCommand = new NanCommand(wifiHandle,
+                                0,
+                                OUI_QCA,
+                                info->support_nan_ext_cmd?
+                                QCA_NL80211_VENDOR_SUBCMD_NAN_EXT :
+                                QCA_NL80211_VENDOR_SUBCMD_NAN);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    ret = nanCommand->create();
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->set_iface_id(ifaceInfo->name);
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->putNanSharedKeyDescriptorReq(id, msg);
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: putNanSharedKeyDescriptorReq Error:%d", __FUNCTION__, ret);
+        goto cleanup;
+    }
+
+    ret = nanCommand->requestEvent();
+    if (ret != WIFI_SUCCESS)
+        ALOGE("%s: requestEvent Error:%d", __FUNCTION__, ret);
+
+cleanup:
+    delete nanCommand;
+    return ret;
+}
+
 /*  Function to send NAN bootstrapping request to the wifi driver.*/
 wifi_error nan_bootstrapping_request(transaction_id id,
                                      wifi_interface_handle iface,
@@ -631,6 +681,7 @@ wifi_error nan_transmit_followup_request(transaction_id id,
     interface_info *ifaceInfo = getIfaceInfo(iface);
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
+    NanSharedKeyRequest key;
 
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
@@ -657,7 +708,13 @@ wifi_error nan_transmit_followup_request(transaction_id id,
     if (ret != WIFI_SUCCESS)
         goto cleanup;
 
-    ret = nanCommand->putNanTransmitFollowup(id, msg);
+    key.shared_key_attr_len = 0;
+    if (msg->shared_key_desc_flag) {
+#ifdef WPA_PASN_LIB
+      nan_get_shared_key_descriptor(info, msg->addr, &key);
+#endif
+    }
+    ret = nanCommand->putNanTransmitFollowup(id, msg, &key);
     if (ret != WIFI_SUCCESS) {
         ALOGE("%s: putNanTransmitFollowup Error:%d", __FUNCTION__, ret);
         goto cleanup;

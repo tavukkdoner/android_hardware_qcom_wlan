@@ -741,6 +741,31 @@ enum nan_attr_id {
     NAN_ATTR_ID_NIRA =  0x2B,
 };
 
+#define NAN_GTK_LEN 16
+#define NAN_GTK_MAX_LEN 32
+#define NAN_IGTK_LEN 16
+#define NAN_IGTK_MAX_LEN 32
+#define NAN_BIGTK_LEN 16
+#define NAN_BIGTK_MAX_LEN 32
+#define NAN_IGTK_KDE_PREFIX_LEN (2 + 6)
+#define NAN_BIGTK_KDE_PREFIX_LEN (2 + 6)
+#define NAN_MAX_SHARED_KEY_ATTR_LEN 1024
+#define MAX_IGTK_KDE_LEN 70
+#define MAX_BIGTK_KDE_LEN 70
+#define NAN_SHARED_KEY_ATTR_ID 0x24
+#define NAN_ENCRYPT_KEY_DATA   BIT(12)
+#define NAN_VENDOR_ATTR_TYPE   0xdd
+
+#define NAN_KDE_TYPE_IGTK                 0x02
+#define NAN_KDE_TYPE_BIGTK                0x03
+#define NAN_KDE_TYPE_IGTK_LIFETIME        0x06
+#define NAN_KDE_TYPE_BIGTK_LIFETIME       0x07
+#define NAN_KDE_TYPE_NIK                  0x24
+#define NAN_KDE_TYPE_NIK_LIFETIME         0x25
+
+#define NAN_IGTK_KEY_IDX                   4
+#define NAN_BIGTK_KEY_IDX                  6
+
 typedef struct PACKED {
         u8 attr_id;
         u16 len;
@@ -1512,6 +1537,87 @@ typedef struct PACKED {
     u8 tag[NAN_IDENTITY_TAG_LEN];
 } NanNIRARequest;
 
+struct nanGrpKey {
+    int cipher;
+    u8 gtk[NAN_GTK_MAX_LEN];
+    size_t gtk_len;
+    u32 gtk_life_time;
+    u8 igtk[NAN_IGTK_MAX_LEN];
+    size_t igtk_len;
+    u32 igtk_life_time;
+    u8 bigtk[NAN_BIGTK_MAX_LEN];
+    size_t bigtk_len;
+    u32 bigtk_life_time;
+};
+
+struct PACKED sharedKeyDesc {
+    u8 attrID;
+    u16 length;
+    u8 publishID;
+    u8 keyDescriptor[0];
+};
+
+struct PACKED keyDescriptor {
+    u8 descriptorType;
+    u16 keyInfo;
+    u16 keyLength;
+    u8 keyReplayCounter[8];
+    u8 keyNonce[32];
+    u8 eapolKeyIV[16];
+    u8 keyRsc[8];
+    u8 reserved[8];
+    u8 keyMic[16];
+    u16 keyDataLen;
+    u8 keyData[0];
+};
+
+struct PACKED nanKDE {
+    u8 type;
+    u8 length;
+    u8 oui[3];
+    u8 dataType;
+    u8 data[0];
+};
+
+struct PACKED nikKDE {
+    u8 cipher;
+    u8 nik_data[0];
+};
+
+struct PACKED nikLifetime {
+    u32 lifetime;
+};
+
+struct PACKED igtkKDE {
+        u8 keyid[2];
+        u8 pn[6];
+        u8 igtk[0];
+};
+
+#define NAN_BIGTK_KDE_PREFIX_LEN (2 + 6)
+struct PACKED bigtkKDE {
+        u8 keyid[2];
+        u8 pn[6];
+        u8 bigtk[0];
+};
+
+struct PACKED igtkLifetime {
+       u32 lifetime;
+};
+
+struct PACKED bigtkLifetime {
+       u32 lifetime;
+};
+
+typedef struct {
+    /* Advertise shared key descriptor holding Group keys */
+    u16 pub_sub_id;
+    u32 requestor_instance_id;
+    u8 peer_disc_mac_addr[NAN_MAC_ADDR_LEN];
+    u16 shared_key_attr_len;
+    u8 shared_key_attr[NAN_MAX_SHARED_KEY_ATTR_LEN];
+} NanSharedKeyRequest, *pNanSharedKeyRequest;
+
 /* Enumeration for NAN device current role */
 enum secure_nan_role {
     SECURE_NAN_IDLE = 0,
@@ -1693,6 +1799,13 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
                                     int cipher, int akmp, int role);
 wifi_error nan_set_nira_request(transaction_id id, wifi_interface_handle iface,
                                 const u8 *nan_identity_key);
+wifi_error nan_sharedkey_followup_request(transaction_id id,
+                                     wifi_interface_handle iface,
+                                     NanSharedKeyRequest *msg);
+wifi_error nan_validate_shared_key_desc(hal_info *info, const u8 *addr, u8 *buf,
+                                        u16 len);
+wifi_error nan_get_shared_key_descriptor(hal_info *info, const u8 *addr,
+                                         NanSharedKeyRequest *key);
 
 #ifdef __cplusplus
 }

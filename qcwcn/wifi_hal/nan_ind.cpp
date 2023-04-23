@@ -147,6 +147,10 @@ int NanCommand::handleNanIndication()
         if (res)
            ALOGE("handleNanBootstrappingInd Failed, ret = %d", res);
 
+        res = handleNanSharedKeyDescIndication();
+        if (res)
+           ALOGE("handleNanSharedKeyDescInd Failed, ret = %d", res);
+
         res = getNanFollowup(&followupInd);
         if (!res && mHandler.EventFollowup) {
             (*mHandler.EventFollowup)(&followupInd);
@@ -666,6 +670,115 @@ int NanCommand::handleNanBootstrappingIndication()
             retval = WIFI_ERROR_INVALID_ARGS;
        }
     }
+    return retval;
+}
+
+int NanCommand::handleNanSharedKeyDescIndication()
+{
+    u8 mac[NAN_MAC_ADDR_LEN];
+    int retval = WIFI_SUCCESS;
+    u16 shared_key_attr_len = 0;
+    u8 shared_key_attr[NAN_MAX_SHARED_KEY_ATTR_LEN];
+
+    if (mNanVendorEvent == NULL) {
+        ALOGE("%s: Invalid mNanVendorEvent:%p",
+              __func__, mNanVendorEvent);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    pNanFollowupIndMsg pRsp = (pNanFollowupIndMsg)mNanVendorEvent;
+    u8 *pInputTlv = pRsp->ptlv;
+    NanTlv outputTlv;
+    u16 readLen = 0;
+    int remainingLen = (mNanDataLen -  \
+        (sizeof(NanMsgHeader) + sizeof(NanFollowupIndParams)));
+
+    if (remainingLen <= 0) {
+        ALOGV("%s: No TLV's present",__func__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+    ALOGV("%s: TLV remaining Len:%d",__func__, remainingLen);
+    memset(mac, 0, sizeof(mac));
+    while (remainingLen > 0) {
+        memset(&outputTlv, 0, sizeof(outputTlv));
+        readLen = NANTLV_ReadTlv(pInputTlv, &outputTlv, remainingLen);
+        if (!readLen)
+            break;
+
+        ALOGV("%s: Remaining Len:%d readLen:%d type:%d length:%d",
+              __func__, remainingLen, readLen, outputTlv.type,
+              outputTlv.length);
+        switch (outputTlv.type) {
+        case NAN_TLV_TYPE_MAC_ADDRESS:
+            if (outputTlv.length > sizeof(mac)) {
+                outputTlv.length = sizeof(mac);
+            }
+            memcpy(mac, outputTlv.value, outputTlv.length);
+            break;
+        case NAN_TLV_TYPE_NAN_SHARED_KEY_DESC_ATTR:
+            if (outputTlv.length > NAN_MAX_SHARED_KEY_ATTR_LEN) {
+                outputTlv.length = NAN_MAX_SHARED_KEY_ATTR_LEN;
+            }
+            shared_key_attr_len = outputTlv.length;
+            memcpy(shared_key_attr, outputTlv.value,
+                   outputTlv.length);
+            break;
+        default:
+            ALOGV("Unknown TLV type skipped");
+            break;
+        }
+        remainingLen -= readLen;
+        pInputTlv += readLen;
+    }
+#ifdef WPA_PASN_LIB
+    if (!shared_key_attr_len)
+        return retval;
+
+    NanPairingConfirmInd evt;
+    hal_info *info = getHalInfo(wifiHandle());
+    struct pasn_data *pasn;
+    struct nan_pairing_peer_info *entry;
+    if (nan_validate_shared_key_desc(info, mac, shared_key_attr,
+                                     shared_key_attr_len)) {
+         ALOGV("Pairing handshake Invalid");
+         return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    entry = nan_pairing_get_peer_from_list(info->secure_nan, mac);
+    if (!entry) {
+        ALOGE("%s NAN Pairing: peer not found", __FUNCTION__);
+        return retval;
+    }
+
+    pasn = &entry->pasn;
+    evt.pairing_instance_id = entry->pairing_instance_id;
+    evt.rsp_code = NAN_PAIRING_REQUEST_ACCEPT;
+    evt.reason_code = NAN_STATUS_SUCCESS;
+    if (entry->is_paired)
+        evt.nan_pairing_request_type = NAN_PAIRING_VERIFICATION;
+    else
+        evt.nan_pairing_request_type = NAN_PAIRING_SETUP;
+
+    evt.enable_pairing_cache = !!(entry->dcea_cap_info & DCEA_NPK_CACHING_ENABLED);
+
+    if (pasn->akmp == WPA_KEY_MGMT_PASN)
+        evt.npk_security_association.akm = PASN;
+    else
+        evt.npk_security_association.akm = SAE;
+
+    if (info->secure_nan->dev_nik)
+        memcpy(evt.npk_security_association.local_nan_identity_key,
+               info->secure_nan->dev_nik->nik_data, NAN_IDENTITY_KEY_LEN);
+
+    memcpy(evt.npk_security_association.peer_nan_identity_key,
+           entry->peer_nik, NAN_IDENTITY_KEY_LEN);
+
+    evt.npk_security_association.npk.pmk_len = pasn->pmk_len;
+    if (sizeof(evt.npk_security_association.npk.pmk) >= pasn->pmk_len)
+        memcpy(evt.npk_security_association.npk.pmk, pasn->pmk, pasn->pmk_len);
+    handleNanPairingConfirm(&evt);
+    entry->is_paired = true;
+#endif
     return retval;
 }
 

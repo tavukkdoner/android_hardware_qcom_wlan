@@ -1397,6 +1397,87 @@ wifi_error NanCommand::putNanSubscribeCancel(transaction_id id,
     return ret;
 }
 
+wifi_error NanCommand::putNanSharedKeyDescriptorReq(transaction_id id,
+                                       const NanSharedKeyRequest *pReq)
+{
+    wifi_error ret;
+    struct nlattr *nl_data;
+    ALOGV("SHARED_KEY_DESCRIPTOR_REQUEST");
+    if (pReq == NULL) {
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    size_t message_len =
+        sizeof(NanMsgHeader) + sizeof(NanTransmitFollowupReqParams) +
+        (pReq->shared_key_attr_len ? SIZEOF_TLV_HDR + pReq->shared_key_attr_len : 0);
+
+    /* SDA Attribute */
+    message_len += (SIZEOF_TLV_HDR + strlen("SHARED_KEY_DESCRIPTOR_REQUEST"));
+    /* Mac address needs to be added in TLV */
+    message_len += (SIZEOF_TLV_HDR + sizeof(pReq->peer_disc_mac_addr));
+
+    pNanTransmitFollowupReqMsg pFwReq = (pNanTransmitFollowupReqMsg)malloc(message_len);
+    if (pFwReq == NULL) {
+        cleanup();
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+
+    memset (pFwReq, 0, message_len);
+    pFwReq->fwHeader.msgVersion = (u16)NAN_MSG_VERSION1;
+    pFwReq->fwHeader.msgId = NAN_MSG_ID_TRANSMIT_FOLLOWUP_REQ;
+    pFwReq->fwHeader.msgLen = message_len;
+    pFwReq->fwHeader.handle = pReq->pub_sub_id;
+    pFwReq->fwHeader.transactionId = id;
+
+    pFwReq->transmitFollowupReqParams.matchHandle = pReq->requestor_instance_id;
+    pFwReq->transmitFollowupReqParams.priority = 2;
+    pFwReq->transmitFollowupReqParams.window = 0;
+    pFwReq->transmitFollowupReqParams.followupTxRspDisableFlag = 1;
+    pFwReq->transmitFollowupReqParams.reserved = 0;
+
+    u8* tlvs = pFwReq->ptlv;
+
+    /* Mac address needs to be added in TLV */
+    tlvs = addTlv(NAN_TLV_TYPE_MAC_ADDRESS, sizeof(pReq->peer_disc_mac_addr),
+                  (const u8*)&pReq->peer_disc_mac_addr[0], tlvs);
+
+
+    u16 tlv_type = NAN_TLV_TYPE_SERVICE_SPECIFIC_INFO;
+
+    tlvs = addTlv(tlv_type, strlen("SHARED_KEY_DESCRIPTOR_REQUEST"),
+                  (const u8*)"SHARED_KEY_DESCRIPTOR_REQUEST", tlvs);
+
+    if (pReq->shared_key_attr_len) {
+        ALOGI("Adding Shared Key Attr");
+        tlvs = addTlv(NAN_TLV_TYPE_NAN_SHARED_KEY_DESC_ATTR,
+                      pReq->shared_key_attr_len,
+                      pReq->shared_key_attr, tlvs);
+    }
+
+    mVendorData = (char *)pFwReq;
+    mDataLen = message_len;
+
+    ret = WIFI_SUCCESS;
+
+    nl_data = attr_start(NL80211_ATTR_VENDOR_DATA);
+    if (!nl_data) {
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    if (mMsg.put_bytes(QCA_WLAN_VENDOR_ATTR_NAN_CMD_DATA,
+                         mVendorData, mDataLen)) {
+        ALOGE("%s: put attr error", __func__);
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+    attr_end(nl_data);
+
+    hexdump(mVendorData, mDataLen);
+    return ret;
+}
+
 wifi_error NanCommand::putNanBootstrappingReq(transaction_id id,
                                               const NanBootstrappingRequest *pReq,
                                               u16 pub_sub_id)
@@ -1623,7 +1704,8 @@ wifi_error NanCommand::putNanBootstrappingIndicationRsp(transaction_id id,
 }
 
 wifi_error NanCommand::putNanTransmitFollowup(transaction_id id,
-                                       const NanTransmitFollowupRequest *pReq)
+                                       const NanTransmitFollowupRequest *pReq,
+                                       const NanSharedKeyRequest *key)
 {
     wifi_error ret;
     ALOGV("TRANSMIT_FOLLOWUP");
@@ -1636,7 +1718,8 @@ wifi_error NanCommand::putNanTransmitFollowup(transaction_id id,
         sizeof(NanMsgHeader) + sizeof(NanTransmitFollowupReqParams) +
         (pReq->service_specific_info_len ? SIZEOF_TLV_HDR +
          pReq->service_specific_info_len : 0) +
-        (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0);
+        (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0) +
+        (key->shared_key_attr_len ? SIZEOF_TLV_HDR + key->shared_key_attr_len : 0);
 
     /* Mac address needs to be added in TLV */
     message_len += (SIZEOF_TLV_HDR + sizeof(pReq->addr));
@@ -1681,6 +1764,13 @@ wifi_error NanCommand::putNanTransmitFollowup(transaction_id id,
     if (pReq->sdea_service_specific_info_len) {
         tlvs = addTlv(NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO, pReq->sdea_service_specific_info_len,
                       (const u8*)&pReq->sdea_service_specific_info[0], tlvs);
+    }
+
+    if (key->shared_key_attr_len) {
+        ALOGI("Adding Shared Key Attr");
+        tlvs = addTlv(NAN_TLV_TYPE_NAN_SHARED_KEY_DESC_ATTR,
+                      key->shared_key_attr_len,
+                      key->shared_key_attr, tlvs);
     }
 
     mVendorData = (char *)pFwReq;

@@ -262,6 +262,315 @@ out_free_msg:
     return err;
 }
 
+wifi_error nan_validate_shared_key_desc(hal_info *info, const u8 *addr, u8 *buf,
+                                        u16 len)
+{
+    bool alloc = false;
+    wifi_error ret = WIFI_SUCCESS;
+    u16 key_data_len;
+    struct wpa_secure_nan *secure_nan;
+    struct ptksa_cache_entry *entry;
+    struct sharedKeyDesc *shared_key_desc;
+    struct keyDescriptor *key_desc;
+    struct nanKDE *nan_kde;
+    struct nikKDE *nik_kde;
+    struct nikLifetime *nik_lifetime_kde;
+    u8 *pos, *key_data, *decry_key_data;
+    struct nan_pairing_peer_info *peer;
+
+    if (len < (sizeof(struct sharedKeyDesc) +
+               sizeof(struct keyDescriptor) +
+               sizeof(struct nanKDE) +
+               sizeof(struct nikKDE) + NAN_IDENTITY_KEY_LEN +
+               sizeof(struct nanKDE) +
+               sizeof(struct nikLifetime)))
+    {
+        ALOGE("%s: Invalid buf for Shared Key", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    if (!info || !info->secure_nan) {
+        ALOGE("%s: secure nan NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+    secure_nan = info->secure_nan;
+
+    peer = nan_pairing_get_peer_from_list(secure_nan, (u8 *)addr);
+    if (!peer) {
+        ALOGE(" %s :No Peer in pairing list, ADDR=" MACSTR,
+              __FUNCTION__, MAC2STR(addr));
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    shared_key_desc = (struct sharedKeyDesc *)buf;
+    if (shared_key_desc->attrID != NAN_SHARED_KEY_ATTR_ID) {
+        ALOGE("%s: Invalid Attr ID: %d", __FUNCTION__, shared_key_desc->attrID);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    pos = buf;
+    pos += sizeof(struct sharedKeyDesc);
+
+    key_desc = (struct keyDescriptor *)pos;
+    key_data_len = WPA_GET_BE16((u8 *)&key_desc->keyDataLen);
+    pos += sizeof(struct keyDescriptor);
+
+    key_data = pos;
+
+    u16 keyInfo = WPA_GET_BE16((u8 *)&key_desc->keyInfo);
+    /* Data is encrypted with KEK */
+    if (keyInfo & NAN_ENCRYPT_KEY_DATA) {
+        entry = ptksa_cache_get(secure_nan->ptksa, addr, WPA_CIPHER_NONE);
+        if (!entry) {
+            ALOGE("%s: PTKSA entry NULL", __FUNCTION__);
+            return WIFI_ERROR_UNKNOWN;
+        }
+        decry_key_data = (u8 *)malloc(key_data_len);
+        if (!decry_key_data) {
+            ALOGE("%s: Memory alloc failed", __FUNCTION__);
+            return WIFI_ERROR_OUT_OF_MEMORY;
+        }
+        alloc = true;
+        if(aes_unwrap(entry->ptk.kek, entry->ptk.kek_len,
+           (key_data_len - 8)/8, key_data, decry_key_data)) {
+           ALOGE("%s: aes unwrap failed", __FUNCTION__);
+           ret = WIFI_ERROR_UNKNOWN;
+           goto fail;
+        }
+    } else {
+       decry_key_data = key_data;
+    }
+
+    pos = decry_key_data;
+
+    nan_kde = (struct nanKDE *)pos;
+    if ((nan_kde->type != NAN_VENDOR_ATTR_TYPE) ||
+        (WPA_GET_BE24(nan_kde->oui) != OUI_WFA) ||
+        (nan_kde->dataType != NAN_KDE_TYPE_NIK)) {
+        ALOGE("%s: invalid KDE for NIK", __FUNCTION__);
+        ret = WIFI_ERROR_INVALID_ARGS;
+        goto fail;
+    } // NIK KDE
+
+    pos += sizeof(struct nanKDE);
+
+    nik_kde = (struct nikKDE *)pos;
+    if (NAN_IDENTITY_KEY_LEN != nan_kde->length - 4 - sizeof(struct nikKDE)) {
+        ALOGE("%s: invalid NIK Length", __FUNCTION__);
+        ret = WIFI_ERROR_INVALID_ARGS;
+        goto fail;
+     }
+
+    pos += sizeof(struct nikKDE) + NAN_IDENTITY_KEY_LEN;
+
+    nan_kde = (struct nanKDE *)pos;
+    if ((nan_kde->type != NAN_VENDOR_ATTR_TYPE) ||
+        (WPA_GET_BE24(nan_kde->oui) != OUI_WFA) ||
+        (nan_kde->dataType != NAN_KDE_TYPE_NIK_LIFETIME)) {
+        ALOGE("%s: invalid KDE for lifetime NIK", __FUNCTION__);
+        ret = WIFI_ERROR_INVALID_ARGS;
+        goto fail;
+    } // NIK KDE Lifetime
+
+    pos += sizeof(struct nanKDE);
+    nik_lifetime_kde = (struct nikLifetime *)pos;
+    peer->peer_nik_lifetime = nik_lifetime_kde->lifetime;
+    ALOGI("%s: copied peer nik", __FUNCTION__);
+    memcpy(peer->peer_nik, nik_kde->nik_data, NAN_IDENTITY_KEY_LEN);
+
+fail:
+     if (alloc)
+         free(decry_key_data);
+     return ret;
+}
+
+wifi_error nan_get_shared_key_descriptor(hal_info *info, const u8 *addr,
+                                         NanSharedKeyRequest *key)
+{
+    wifi_error ret = WIFI_ERROR_UNKNOWN;
+
+    u8 *buf, *pos, *key_data, *enc_key_data, *enc_buf;
+    u16 buf_len, key_data_len, pad_len = 0, oui_offset;
+    struct sharedKeyDesc *shared_key_desc;
+    struct keyDescriptor *key_desc;
+    struct nanKDE *nan_kde;
+    struct nikKDE *nik_kde;
+    struct igtkKDE *igtk_kde;
+    struct bigtkKDE *bigtk_kde;
+    struct nikLifetime *nik_lifetime_kde;
+    struct igtkLifetime *igtk_lifetime_kde;
+    struct bigtkLifetime *bigtk_lifetime_kde;
+    struct nanGrpKey *grp_keys;
+    struct nanIDkey *nik;
+    struct ptksa_cache_entry *entry;
+    struct wpa_secure_nan *secure_nan;
+
+    if (!info || !info->secure_nan || !info->secure_nan->dev_nik) {
+        ALOGE("%s: secure nan NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    secure_nan = info->secure_nan;
+    nik = secure_nan->dev_nik;
+    grp_keys = secure_nan->dev_grp_keys;
+    // construct KDE
+
+    key_data_len = sizeof(struct nanKDE) + sizeof(struct nikKDE) + nik->nik_len +
+                   sizeof(struct nanKDE) + sizeof(struct nikLifetime);
+
+    if (grp_keys) {
+       if (grp_keys->igtk_len)
+           key_data_len += (sizeof(struct nanKDE) + sizeof(struct igtkKDE) +
+                            grp_keys->igtk_len) +
+                           (sizeof(struct nanKDE) + sizeof(struct igtkLifetime));
+       if (grp_keys->bigtk_len)
+           key_data_len += (sizeof(struct nanKDE) + sizeof(struct bigtkKDE) +
+                            grp_keys->bigtk_len) +
+                           (sizeof(struct nanKDE) + sizeof(struct bigtkLifetime));
+    }
+
+    pad_len = key_data_len % 8;
+    if (pad_len)
+        pad_len = 8 - pad_len;
+    key_data_len += pad_len + 8;
+
+    buf_len = sizeof(struct sharedKeyDesc) + sizeof(struct keyDescriptor) +
+              key_data_len;
+
+    buf = (u8 *)malloc(buf_len);
+
+    if (!buf) {
+            ALOGE("%s: Memory allocation Fail", __FUNCTION__);
+            return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+    memset(buf, 0, buf_len);
+    pos = buf;
+
+    oui_offset = sizeof(struct nanKDE) - offsetof(struct nanKDE, oui);
+    shared_key_desc = (struct sharedKeyDesc *)buf;
+    shared_key_desc->attrID = NAN_SHARED_KEY_ATTR_ID;
+    shared_key_desc->length = buf_len - offsetof(struct sharedKeyDesc,
+                                                 publishID);
+    shared_key_desc->publishID = secure_nan->pub_sub_id;
+    pos += sizeof(struct sharedKeyDesc);
+
+    key_desc = (struct keyDescriptor *)pos;
+    WPA_PUT_BE16((u8 *)&key_desc->keyInfo, NAN_ENCRYPT_KEY_DATA);
+    WPA_PUT_BE16((u8 *)&key_desc->keyDataLen, key_data_len);
+    pos += sizeof(struct keyDescriptor);
+
+    key_data = pos;
+    nan_kde = (struct nanKDE *)pos;
+    nan_kde->type = NAN_VENDOR_ATTR_TYPE;
+    nan_kde->length = oui_offset + sizeof(struct nikKDE) + nik->nik_len;
+    WPA_PUT_BE24(nan_kde->oui, OUI_WFA);
+    nan_kde->dataType = NAN_KDE_TYPE_NIK;
+    pos += sizeof(struct nanKDE);
+
+    nik_kde = (struct nikKDE *)pos;
+    nik_kde->cipher = NCS_SK_128;
+    memcpy(nik_kde->nik_data, nik->nik_data, nik->nik_len);
+    pos += sizeof(struct nikKDE) + nik->nik_len;
+
+    nan_kde = (struct nanKDE *)pos;
+    nan_kde->type = NAN_VENDOR_ATTR_TYPE;
+    nan_kde->length = oui_offset + sizeof(struct nikLifetime);
+    WPA_PUT_BE24(nan_kde->oui, OUI_WFA);
+    nan_kde->dataType = NAN_KDE_TYPE_NIK_LIFETIME;
+    pos += sizeof(struct nanKDE);
+
+    nik_lifetime_kde = (struct nikLifetime *)pos;
+    nik_lifetime_kde->lifetime = nan_pairing_get_nik_lifetime(nik);
+    pos += sizeof(struct nikLifetime);
+
+/* IGTK */
+    if (grp_keys && grp_keys->igtk_len) {
+        nan_kde = (struct nanKDE *)pos;
+        nan_kde->type = NAN_VENDOR_ATTR_TYPE;
+        nan_kde->length = oui_offset + sizeof(struct igtkKDE) +
+                          grp_keys->igtk_len;
+        WPA_PUT_BE24(nan_kde->oui, OUI_WFA);
+        nan_kde->dataType = NAN_KDE_TYPE_IGTK;
+        pos += sizeof(struct nanKDE);
+
+        igtk_kde = (struct igtkKDE *)pos;
+        igtk_kde->keyid[0] = NAN_IGTK_KEY_IDX;
+        memcpy(igtk_kde->igtk, grp_keys->igtk, grp_keys->igtk_len);
+        pos += sizeof(struct igtkKDE) + grp_keys->igtk_len;
+
+        nan_kde = (struct nanKDE *)pos;
+        nan_kde->type = NAN_VENDOR_ATTR_TYPE;
+        nan_kde->length = oui_offset + sizeof(struct igtkLifetime);
+        WPA_PUT_BE24(nan_kde->oui, OUI_WFA);
+        nan_kde->dataType = NAN_KDE_TYPE_IGTK_LIFETIME;
+        pos += sizeof(struct nanKDE);
+
+        igtk_lifetime_kde = (struct igtkLifetime *)pos;
+        igtk_lifetime_kde->lifetime = grp_keys->igtk_life_time;
+        pos += sizeof(struct igtkLifetime);
+    }
+/* IGTK end */
+
+/* BIGTK */
+    if (grp_keys && grp_keys->bigtk_len) {
+        nan_kde = (struct nanKDE *)pos;
+        nan_kde->type = NAN_VENDOR_ATTR_TYPE;
+        nan_kde->length = oui_offset + sizeof(struct bigtkKDE) +
+                          grp_keys->bigtk_len;
+        WPA_PUT_BE24(nan_kde->oui, OUI_WFA);
+        nan_kde->dataType = NAN_KDE_TYPE_BIGTK;
+        pos += sizeof(struct nanKDE);
+
+        bigtk_kde = (struct bigtkKDE *)pos;
+        bigtk_kde->keyid[0] = NAN_BIGTK_KEY_IDX;
+        memcpy(bigtk_kde->bigtk, grp_keys->bigtk, grp_keys->bigtk_len);
+        pos += sizeof(struct bigtkKDE) + grp_keys->bigtk_len;
+
+        nan_kde = (struct nanKDE *)pos;
+        nan_kde->type = NAN_VENDOR_ATTR_TYPE;
+        nan_kde->length = oui_offset + sizeof(struct bigtkLifetime);
+        WPA_PUT_BE24(nan_kde->oui, OUI_WFA);
+        nan_kde->dataType = NAN_KDE_TYPE_BIGTK_LIFETIME;
+        pos += sizeof(struct nanKDE);
+
+        bigtk_lifetime_kde = (struct bigtkLifetime *)pos;
+        bigtk_lifetime_kde->lifetime = grp_keys->bigtk_life_time;
+        pos += sizeof(struct bigtkLifetime);
+    }
+/* BIGTK end */
+
+    if(pad_len)
+       *pos++ = 0xdd;
+
+    //Encrypt keydata
+    enc_buf = (u8 *)malloc(buf_len);
+    if (!enc_buf) {
+        ALOGE("%s: enc buf alloc Failed", __FUNCTION__);
+        ret = WIFI_ERROR_OUT_OF_MEMORY;
+        goto fail;
+    }
+
+    memcpy (enc_buf, buf, buf_len - key_data_len);
+    enc_key_data = enc_buf + (buf_len - key_data_len);
+
+    entry = ptksa_cache_get(secure_nan->ptksa, addr, WPA_CIPHER_NONE);
+    if (entry && aes_wrap(entry->ptk.kek, entry->ptk.kek_len,
+                       (key_data_len - 8)/8, key_data, enc_key_data))
+    {
+            ALOGE("%s: aes wrap Failed", __FUNCTION__);
+            ret = WIFI_ERROR_UNKNOWN;
+            goto fail;
+    }
+    key->shared_key_attr_len = buf_len;
+    memcpy(key->shared_key_attr, enc_buf, buf_len);
+    ret = WIFI_SUCCESS;
+
+fail:
+    free(buf);
+    free(enc_buf);
+    return ret;
+}
+
 static u32 wpa_alg_to_cipher_suite(enum wpa_alg alg, size_t key_len)
 {
     switch (alg) {
@@ -508,6 +817,17 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
 
         nanCommand->handleNanPairingConfirm(&evt);
         peer->is_paired = true;
+    } else {
+      NanSharedKeyRequest msg;
+      if (nan_get_shared_key_descriptor(info, peer->bssid, &msg)) {
+          ALOGE("NAN: Unable to get shared key descriptor");
+          return -1;
+      }
+      memcpy(msg.peer_disc_mac_addr, peer->bssid, NAN_MAC_ADDR_LEN);
+      msg.requestor_instance_id = peer->requestor_instance_id;
+      msg.pub_sub_id = peer->pub_sub_id;
+      nan_sharedkey_followup_request(0, (wifi_interface_handle)info->secure_nan->cb_iface_ctx,
+                                     &msg);
     }
     return WIFI_SUCCESS;
 }
