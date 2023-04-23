@@ -288,6 +288,192 @@ static int nan_pairing_register_pasn_auth_frames(wifi_interface_handle iface)
     return 0;
 }
 
+const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr)
+{
+  const u8 *nan;
+  u8 ie_len = nan_ie[1];
+
+  if (ie_len < NAN_IE_HEADER - 2) {
+      ALOGV("%s: NAN IE does not contain attr", __FUNCTION__);
+      return NULL;
+  }
+  nan = nan_ie + NAN_IE_HEADER;
+
+  return get_ie(nan, 2 + ie_len - NAN_IE_HEADER, attr);
+}
+
+const u8 *nan_get_attr_from_ies(const u8 *ies, size_t ies_len,
+                                 enum nan_attr_id attr)
+{
+  const u8 *nan_ie;
+
+  nan_ie = get_vendor_ie(ies, ies_len, NAN_IE_VENDOR_TYPE);
+  if (!nan_ie) {
+      ALOGV("%s: NAN IE NULL", __FUNCTION__);
+      return NULL;
+  }
+
+  return nan_attr_from_nan_ie(nan_ie, attr);
+}
+
+void nan_pairing_add_setup_ies(struct wpa_secure_nan *secure_nan,
+                               struct pasn_data *pasn, int peer_role)
+{
+    u8 *pos;
+    nan_dcea *dcea;
+    nan_csia *csia;
+    nan_npba *npba;
+    u8 *extra_ies;
+
+    if (!secure_nan || !pasn) {
+        ALOGE("%s: Secure NAN/PASN Null ", __FUNCTION__);
+        return;
+    }
+
+    pasn->extra_ies_len = NAN_IE_HEADER + sizeof(nan_dcea) +
+                          sizeof(nan_csia) + sizeof(nan_csa) +
+                          sizeof(nan_npba);
+
+    if (peer_role == SECURE_NAN_PAIRING_INITIATOR)
+        pasn->extra_ies_len += sizeof(nan_csa);
+
+    if (pasn->extra_ies)
+        os_free((u8 *)pasn->extra_ies);
+
+    extra_ies = (u8 *)os_zalloc(pasn->extra_ies_len);
+
+    if (!extra_ies) {
+        ALOGE("%s: Memory allocation failed", __FUNCTION__);
+        pasn->extra_ies_len = 0;
+        return;
+    }
+
+    pos = extra_ies;
+
+    // NAN IE header
+    *pos++ = WLAN_EID_VENDOR_SPECIFIC;
+    *pos++ = pasn->extra_ies_len - 2;
+    WPA_PUT_BE32(pos, NAN_IE_VENDOR_TYPE);
+    pos += 4;
+
+    dcea = (nan_dcea *)pos;
+    dcea->attr_id = NAN_ATTR_ID_DCEA;
+    dcea->len = sizeof(nan_dcea) - offsetof(nan_dcea, cap_info);
+    if (secure_nan->enable_pairing_setup)
+        dcea->cap_info |= DCEA_PARING_SETUP_ENABLED;
+    if (secure_nan->enable_pairing_cache)
+        dcea->cap_info |= DCEA_NPK_CACHING_ENABLED;
+    pos += sizeof(nan_dcea);
+
+    csia = (nan_csia *)pos;
+    csia->attr_id = NAN_ATTR_ID_CSIA;
+    csia->len = sizeof(nan_csia) - offsetof(nan_csia, caps);
+    csia->len += sizeof(nan_csa);
+    csia->caps = 0;
+    csia->csa[0].cipher = NCS_PK_PASN_128;
+    csia->csa[0].pub_id = secure_nan->pub_sub_id;
+    if (peer_role == SECURE_NAN_PAIRING_INITIATOR) {
+        csia->csa[1].cipher = NCS_SK_128;
+        csia->csa[1].pub_id = secure_nan->pub_sub_id;
+        csia->len += sizeof(nan_csa);
+        pos += sizeof(nan_csa);
+    }
+    pos += sizeof(nan_csia) + sizeof(nan_csa);
+
+    npba = (nan_npba *)pos;
+    npba->attr_id = NAN_ATTR_ID_NPBA;
+    npba->len = sizeof(nan_npba) - offsetof(nan_npba, dialog_token);
+    npba->dialog_token = 0;
+    npba->type_status = 0;
+    npba->reason_code = 0;
+    npba->bootstrapping_method = secure_nan->supported_bootstrap;
+
+    ALOGV("NAN Pairing Setup IEs: dcea cap_info = %d "
+          "npba bootstrapping method = %d", dcea->cap_info,
+           npba->bootstrapping_method);
+    pasn->extra_ies = extra_ies;
+}
+
+void nan_pairing_add_verification_ies(struct wpa_secure_nan *secure_nan,
+                                      struct pasn_data *pasn, int peer_role)
+{
+    u8 *pos;
+    nan_dcea *dcea;
+    nan_csia *csia;
+    nan_nira *nira;
+    u8 *extra_ies;
+
+    if (!secure_nan || !pasn || !secure_nan->dev_nik) {
+        ALOGE("NAN: NIK not initialized");
+        return;
+    }
+
+    pasn->extra_ies_len = NAN_IE_HEADER + sizeof(nan_dcea) +
+                          sizeof(nan_csia) + sizeof(nan_csa) +
+                          offsetof(nan_nira, nonce_tag) +
+                          secure_nan->dev_nik->nira_nonce_len +
+                          secure_nan->dev_nik->nira_tag_len;
+
+    if (peer_role == SECURE_NAN_PAIRING_INITIATOR)
+        pasn->extra_ies_len += sizeof(nan_csa);
+
+    if (pasn->extra_ies)
+        os_free((u8 *)pasn->extra_ies);
+
+    extra_ies = (u8 *) os_zalloc(pasn->extra_ies_len);
+
+    if (!extra_ies) {
+        ALOGE("%s: Memory allocation failed", __FUNCTION__);
+        pasn->extra_ies_len = 0;
+        return;
+    }
+
+    pos = extra_ies;
+
+    // NAN IE header
+    *pos++ = WLAN_EID_VENDOR_SPECIFIC;
+    *pos++ = pasn->extra_ies_len - 2;
+    WPA_PUT_BE32(pos, NAN_IE_VENDOR_TYPE);
+    pos += 4;
+
+    dcea = (nan_dcea *)pos;
+    dcea->attr_id = NAN_ATTR_ID_DCEA;
+    dcea->len = sizeof(nan_dcea) - offsetof(nan_dcea, cap_info);
+    if (secure_nan->enable_pairing_setup)
+        dcea->cap_info |= DCEA_PARING_SETUP_ENABLED;
+    if (secure_nan->enable_pairing_cache)
+        dcea->cap_info |= DCEA_NPK_CACHING_ENABLED;
+    pos += sizeof(nan_dcea);
+
+    csia = (nan_csia *)pos;
+    csia->attr_id = NAN_ATTR_ID_CSIA;
+    csia->len = sizeof(nan_csia) - offsetof(nan_csia, caps);
+    csia->len += sizeof(nan_csa);
+    csia->caps = 0;
+    csia->csa[0].cipher = NCS_PK_PASN_128;
+    csia->csa[0].pub_id = secure_nan->pub_sub_id;
+    if (peer_role == SECURE_NAN_PAIRING_INITIATOR) {
+        csia->csa[1].cipher = NCS_SK_128;
+        csia->csa[1].pub_id = secure_nan->pub_sub_id;
+        csia->len += sizeof(nan_csa);
+        pos += sizeof(nan_csa);
+    }
+    pos += sizeof(nan_csia) + sizeof(nan_csa);
+
+    nira = (nan_nira *)pos;
+    nira->attr_id = NAN_ATTR_ID_NIRA;
+    nira->len = 1 + secure_nan->dev_nik->nira_nonce_len +
+                 secure_nan->dev_nik->nira_tag_len;
+    nira->cipher_ver = 0;
+    os_memcpy(nira->nonce_tag, secure_nan->dev_nik->nira_nonce,
+              secure_nan->dev_nik->nira_nonce_len);
+    os_memcpy(&nira->nonce_tag[secure_nan->dev_nik->nira_nonce_len],
+              secure_nan->dev_nik->nira_tag, secure_nan->dev_nik->nira_tag_len);
+
+    ALOGV("NAN Pairing Verification IEs: dcea cap_info = %d", dcea->cap_info);
+    pasn->extra_ies = extra_ies;
+}
+
 struct wpabuf *nan_pairing_generate_rsn_ie(int akmp, int cipher, u8 *pmkid)
 {
     u8 *pos;
