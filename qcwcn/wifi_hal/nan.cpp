@@ -455,6 +455,168 @@ cleanup:
     return ret;
 }
 
+/*  Function to send NAN bootstrapping request to the wifi driver.*/
+wifi_error nan_bootstrapping_request(transaction_id id,
+                                     wifi_interface_handle iface,
+                                     NanBootstrappingRequest* msg)
+{
+    wifi_error ret;
+    u16 pub_sub_id;
+    NanCommand *nanCommand;
+    NanCommand *t_nanCommand;
+    interface_info *ifaceInfo = getIfaceInfo(iface);
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+    struct nan_pairing_peer_info *entry;
+
+    if (info == NULL) {
+        ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    t_nanCommand = NanCommand::instance(wifiHandle);
+    if (t_nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    pub_sub_id = t_nanCommand->getPubSubId(msg->requestor_instance_id,
+                                           NAN_ROLE_SUBSCRIBER);
+
+    nanCommand = new NanCommand(wifiHandle,
+                                0,
+                                OUI_QCA,
+                                info->support_nan_ext_cmd?
+                                QCA_NL80211_VENDOR_SUBCMD_NAN_EXT :
+                                QCA_NL80211_VENDOR_SUBCMD_NAN);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    ret = nanCommand->create();
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->set_iface_id(ifaceInfo->name);
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->putNanBootstrappingReq(id, msg, pub_sub_id);
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: putNanBootstrappingReq Error:%d", __FUNCTION__, ret);
+        goto cleanup;
+    }
+
+    entry = nan_pairing_add_peer_to_list(info->secure_nan, msg->peer_disc_mac_addr);
+    if (entry) {
+        entry->pub_sub_id = pub_sub_id;
+        entry->requestor_instance_id = msg->requestor_instance_id;
+        entry->bootstrapping_instance_id = info->secure_nan->bootstrapping_id++;
+        entry->peer_role = SECURE_NAN_BOOTSTRAPPING_RESPONDER;
+    }
+
+    if (msg->request_bootstrapping_method)
+        info->secure_nan->supported_bootstrap = msg->request_bootstrapping_method;
+
+    ret = nanCommand->requestEvent();
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: requestEvent Error:%d", __FUNCTION__, ret);
+        nan_pairing_delete_peer_from_list(info->secure_nan, msg->peer_disc_mac_addr);
+    }
+
+cleanup:
+    delete nanCommand;
+    return ret;
+}
+
+/*  Function to send NAN bootstrapping Indication rsp to the wifi driver.*/
+wifi_error nan_bootstrapping_indication_response(transaction_id id,
+                                                 wifi_interface_handle iface,
+                                                 NanBootstrappingIndicationResponse* msg)
+{
+    wifi_error ret;
+    u16 pub_sub_id;
+    NanCommand *nanCommand;
+    NanCommand *t_nanCommand;
+    interface_info *ifaceInfo = getIfaceInfo(iface);
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+    struct nan_pairing_peer_info *entry;
+
+    if (info == NULL) {
+        ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    t_nanCommand = NanCommand::instance(wifiHandle);
+    if (t_nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    pub_sub_id = t_nanCommand->getPubSubId(msg->service_instance_id,
+                                           NAN_ROLE_PUBLISHER);
+
+    nanCommand = new NanCommand(wifiHandle,
+                                0,
+                                OUI_QCA,
+                                info->support_nan_ext_cmd?
+                                QCA_NL80211_VENDOR_SUBCMD_NAN_EXT :
+                                QCA_NL80211_VENDOR_SUBCMD_NAN);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+    entry = nan_pairing_get_peer_from_list(info->secure_nan,
+                                           msg->peer_disc_mac_addr);
+    if (entry == NULL) {
+        ALOGE("%s: peer not found: ADDR=" MACSTR,
+              __FUNCTION__, MAC2STR(msg->peer_disc_mac_addr));
+    } else {
+        pub_sub_id = entry->pub_sub_id;
+    }
+
+
+    if (!pub_sub_id) {
+        ALOGI("%s: Using Global pubsub ID %d", __FUNCTION__,
+              info->secure_nan->pub_sub_id);
+        pub_sub_id = info->secure_nan->pub_sub_id;
+    }
+
+    ret = nanCommand->create();
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->set_iface_id(ifaceInfo->name);
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->putNanBootstrappingIndicationRsp(id, msg, pub_sub_id);
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: putNanBootstrappingIndicationRsp Error:%d", __FUNCTION__, ret);
+        goto cleanup;
+    }
+
+    ret = nanCommand->requestEvent();
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: requestEvent Error:%d", __FUNCTION__, ret);
+    } else {
+           NanBootstrappingConfirmInd bootstrapConfirmInd;
+
+           memset(&bootstrapConfirmInd, 0, sizeof(NanBootstrappingConfirmInd));
+           bootstrapConfirmInd.bootstrapping_instance_id =
+                                  entry ? entry->bootstrapping_instance_id : 0;
+           bootstrapConfirmInd.rsp_code = NAN_BOOTSTRAPPING_REQUEST_ACCEPT;
+
+           nanCommand->handleNanBootstrappingConfirm(&bootstrapConfirmInd);
+    }
+
+cleanup:
+    delete nanCommand;
+    return ret;
+}
+
 /*  Function to send NAN follow up request to the wifi driver.*/
 wifi_error nan_transmit_followup_request(transaction_id id,
                                          wifi_interface_handle iface,
@@ -1831,6 +1993,36 @@ u8 *NanCommand::getServiceId(u32 instance_id, NanRole pool)
     break;
     }
     return NULL;
+}
+
+u16 NanCommand::getPubSubId(u32 instance_id, NanRole pool)
+{
+    u32 i;
+
+    switch(pool) {
+    case NAN_ROLE_PUBLISHER:
+        if ((mStorePubParams == NULL) || (!instance_id) || !mNanMaxPublishes)
+            return 0;
+        ALOGV("Getting PubSub ID from publisher pool for instance ID=%d", instance_id);
+        for (i = 0; i < mNanMaxPublishes; i++) {
+            if (mStorePubParams[i].instance_id == instance_id)
+                return mStorePubParams[i].subscriber_publisher_id;
+        }
+    break;
+    case NAN_ROLE_SUBSCRIBER:
+        if ((mStoreSubParams == NULL) || (!instance_id) || !mNanMaxSubscribes)
+            return 0;
+        ALOGV("Getting PubSub ID from subscriber pool for instance ID=%d", instance_id);
+        for (i = 0; i < mNanMaxSubscribes; i++) {
+            if (mStoreSubParams[i].instance_id == instance_id)
+                return mStoreSubParams[i].subscriber_publisher_id;
+        }
+    break;
+    default:
+        ALOGE("Invalid Pool: %d", pool);
+    break;
+    }
+    return 0;
 }
 
 /*

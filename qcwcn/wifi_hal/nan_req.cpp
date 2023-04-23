@@ -1397,6 +1397,231 @@ wifi_error NanCommand::putNanSubscribeCancel(transaction_id id,
     return ret;
 }
 
+wifi_error NanCommand::putNanBootstrappingReq(transaction_id id,
+                                              const NanBootstrappingRequest *pReq,
+                                              u16 pub_sub_id)
+{
+    wifi_error ret;
+    struct nlattr *nl_data;
+    ALOGV("BOOTSTRAPPING_REQUEST");
+    if (pReq == NULL) {
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    size_t message_len =
+        sizeof(NanMsgHeader) + sizeof(NanTransmitFollowupReqParams) +
+        (pReq->service_specific_info_len ? SIZEOF_TLV_HDR +
+         pReq->service_specific_info_len : 0) +
+        (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR +
+         pReq->sdea_service_specific_info_len : 0) +
+        (pReq->cookie_length ? SIZEOF_TLV_HDR + pReq->cookie_length : 0);
+
+    /* Mac address needs to be added in TLV */
+    message_len += (SIZEOF_TLV_HDR + sizeof(pReq->peer_disc_mac_addr));
+
+    /* Add bootstrapping parameters */
+    message_len += (SIZEOF_TLV_HDR + sizeof(NanFWBootstrappingParams));
+
+    pNanTransmitFollowupReqMsg pFwReq = (pNanTransmitFollowupReqMsg)malloc(message_len);
+    if (pFwReq == NULL) {
+        cleanup();
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+
+    memset (pFwReq, 0, message_len);
+    pFwReq->fwHeader.msgVersion = (u16)NAN_MSG_VERSION1;
+    pFwReq->fwHeader.msgId = NAN_MSG_ID_TRANSMIT_FOLLOWUP_REQ;
+    pFwReq->fwHeader.msgLen = message_len;
+    pFwReq->fwHeader.handle = pub_sub_id;
+    pFwReq->fwHeader.transactionId = id;
+
+    pFwReq->transmitFollowupReqParams.matchHandle = pReq->requestor_instance_id;
+    pFwReq->transmitFollowupReqParams.priority = 2;
+    pFwReq->transmitFollowupReqParams.window = 0;
+    pFwReq->transmitFollowupReqParams.followupTxRspDisableFlag = 1;
+    pFwReq->transmitFollowupReqParams.reserved = 0;
+
+    u8* tlvs = pFwReq->ptlv;
+
+    /* Mac address needs to be added in TLV */
+    tlvs = addTlv(NAN_TLV_TYPE_MAC_ADDRESS, sizeof(pReq->peer_disc_mac_addr),
+                  (const u8*)&pReq->peer_disc_mac_addr[0], tlvs);
+
+
+    u16 tlv_type = NAN_TLV_TYPE_SERVICE_SPECIFIC_INFO;
+
+    if (pReq->service_specific_info_len) {
+        tlvs = addTlv(tlv_type, pReq->service_specific_info_len,
+                      (const u8*)&pReq->service_specific_info[0], tlvs);
+    }
+
+    if (pReq->sdea_service_specific_info_len) {
+        tlvs = addTlv(NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO, pReq->sdea_service_specific_info_len,
+                      (const u8*)&pReq->sdea_service_specific_info[0], tlvs);
+    }
+
+    NanFWBootstrappingParams pNanFWBootstrappingParams;
+
+    memset(&pNanFWBootstrappingParams, 0, sizeof(NanFWBootstrappingParams));
+    pNanFWBootstrappingParams.type = NAN_BS_TYPE_REQUEST;
+    if (pReq->cookie_length) {
+        pNanFWBootstrappingParams.status = NAN_BS_STATUS_COMEBACK;
+    } else {
+        pNanFWBootstrappingParams.status = NAN_BS_STATUS_ACCEPT;
+    }
+    pNanFWBootstrappingParams.dialog_token = 0;
+    pNanFWBootstrappingParams.bootstrapping_method_bitmap =
+                                           pReq->request_bootstrapping_method;
+    pNanFWBootstrappingParams.comeback_after = 0;
+    tlvs = addTlv(NAN_TLV_TYPE_BOOTSTRAPPING_PARAMS, sizeof(NanFWBootstrappingParams),
+                  (const u8*)&pNanFWBootstrappingParams, tlvs);
+
+    if (pReq->cookie_length) {
+           tlvs = addTlv(NAN_TLV_TYPE_BOOTSTRAPPING_COOKIE, pReq->cookie_length,
+                         (const u8*)pReq->cookie, tlvs);
+    }
+
+    mVendorData = (char *)pFwReq;
+    mDataLen = message_len;
+
+    ret = WIFI_SUCCESS;
+
+    nl_data = attr_start(NL80211_ATTR_VENDOR_DATA);
+    if (!nl_data) {
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    if (mMsg.put_bytes(QCA_WLAN_VENDOR_ATTR_NAN_CMD_DATA,
+                         mVendorData, mDataLen)) {
+        ALOGE("%s: put attr error", __func__);
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+    attr_end(nl_data);
+
+    hexdump(mVendorData, mDataLen);
+    return ret;
+}
+
+wifi_error NanCommand::putNanBootstrappingIndicationRsp(transaction_id id,
+                                const NanBootstrappingIndicationResponse *pRsp,
+                                u16 pub_sub_id)
+{
+    wifi_error ret;
+    struct nlattr *nl_data;
+    hal_info *info = getHalInfo(wifiHandle());
+    struct nan_pairing_peer_info *entry = NULL;
+    NanFWBootstrappingParams *pNanFWBootstrappingParams;
+    ALOGV("BOOTSTRAPPING_INDICATION_RSP");
+    if (pRsp == NULL) {
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    size_t message_len =
+        sizeof(NanMsgHeader) + sizeof(NanTransmitFollowupReqParams) +
+        (pRsp->service_specific_info_len ? SIZEOF_TLV_HDR +
+         pRsp->service_specific_info_len : 0) +
+        (pRsp->sdea_service_specific_info_len ? SIZEOF_TLV_HDR +
+         pRsp->sdea_service_specific_info_len : 0);
+
+    /* Mac address needs to be added in TLV */
+    message_len += (SIZEOF_TLV_HDR + sizeof(pRsp->peer_disc_mac_addr));
+
+    /* Add bootstrapping parameters */
+    message_len += (SIZEOF_TLV_HDR + sizeof(NanFWBootstrappingParams));
+
+    pNanTransmitFollowupReqMsg pFwReq = (pNanTransmitFollowupReqMsg)malloc(message_len);
+    if (pFwReq == NULL) {
+        cleanup();
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+    entry = nan_pairing_get_peer_from_list(info->secure_nan,
+                                           (u8 *)pRsp->peer_disc_mac_addr);
+    if (!entry) {
+        ALOGE(" %s :No Peer in pairing list, ADDR=" MACSTR,
+              __FUNCTION__, MAC2STR(pRsp->peer_disc_mac_addr));
+    }
+
+    ALOGV("Message Len %zu", message_len);
+    memset (pFwReq, 0, message_len);
+    pFwReq->fwHeader.msgVersion = (u16)NAN_MSG_VERSION1;
+    pFwReq->fwHeader.msgId = NAN_MSG_ID_TRANSMIT_FOLLOWUP_REQ;
+    pFwReq->fwHeader.msgLen = message_len;
+    pFwReq->fwHeader.handle = pub_sub_id;
+    pFwReq->fwHeader.transactionId = id;
+
+    pFwReq->transmitFollowupReqParams.matchHandle = pRsp->service_instance_id;
+    pFwReq->transmitFollowupReqParams.priority = 2;
+    pFwReq->transmitFollowupReqParams.followupTxRspDisableFlag = 1;
+    pFwReq->transmitFollowupReqParams.reserved = 0;
+
+    u8* tlvs = pFwReq->ptlv;
+
+    tlvs = addTlv(NAN_TLV_TYPE_MAC_ADDRESS, sizeof(pRsp->peer_disc_mac_addr),
+                  (const u8*)&pRsp->peer_disc_mac_addr[0], tlvs);
+
+    u16 tlv_type = NAN_TLV_TYPE_SERVICE_SPECIFIC_INFO;
+
+    if (pRsp->service_specific_info_len) {
+        tlvs = addTlv(tlv_type, pRsp->service_specific_info_len,
+                      (const u8*)&pRsp->service_specific_info[0], tlvs);
+    }
+
+    if (pRsp->sdea_service_specific_info_len) {
+        tlvs = addTlv(NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO,
+                      pRsp->sdea_service_specific_info_len,
+                      (const u8*)&pRsp->sdea_service_specific_info[0], tlvs);
+    }
+
+    pNanFWBootstrappingParams = (NanFWBootstrappingParams *)malloc(sizeof(NanFWBootstrappingParams));
+    if (pNanFWBootstrappingParams == NULL) {
+        cleanup();
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+    memset(pNanFWBootstrappingParams, 0, sizeof(NanFWBootstrappingParams));
+    pNanFWBootstrappingParams->type = NAN_BS_TYPE_RESPONSE;
+    pNanFWBootstrappingParams->status = pRsp->rsp_code;
+    pNanFWBootstrappingParams->dialog_token = 0;
+    if (entry)
+        pNanFWBootstrappingParams->bootstrapping_method_bitmap =
+                                               entry->peer_supported_bootstrap;
+    else
+        pNanFWBootstrappingParams->bootstrapping_method_bitmap =
+                                         info->secure_nan->supported_bootstrap;
+
+    pNanFWBootstrappingParams->comeback_after = (u16)pRsp->come_back_delay;
+
+    tlvs = addTlv(NAN_TLV_TYPE_BOOTSTRAPPING_PARAMS, sizeof(NanFWBootstrappingParams),
+                  (const u8*)pNanFWBootstrappingParams, tlvs);
+
+    free(pNanFWBootstrappingParams);
+
+    mVendorData = (char *)pFwReq;
+    mDataLen = message_len;
+
+    ret = WIFI_SUCCESS;
+
+    nl_data = attr_start(NL80211_ATTR_VENDOR_DATA);
+    if (!nl_data) {
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    if (mMsg.put_bytes(QCA_WLAN_VENDOR_ATTR_NAN_CMD_DATA,
+                         mVendorData, mDataLen)) {
+        ALOGE("%s: put attr error", __func__);
+        cleanup();
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+    attr_end(nl_data);
+
+    hexdump(mVendorData, mDataLen);
+    return ret;
+}
+
 wifi_error NanCommand::putNanTransmitFollowup(transaction_id id,
                                        const NanTransmitFollowupRequest *pReq)
 {

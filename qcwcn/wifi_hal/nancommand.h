@@ -124,6 +124,7 @@ private:
     //Function which calls the necessaryIndication callback
     //based on the indication type
     int handleNanIndication();
+    int handleNanBootstrappingIndication();
     //Various Functions to get the appropriate indications
     int getNanPublishReplied(NanPublishRepliedInd *event);
     int getNanPublishTerminated(NanPublishTerminatedInd *event);
@@ -215,7 +216,12 @@ public:
     wifi_error getNanStaParameter(wifi_interface_handle iface, NanStaParameter *pRsp);
     wifi_error putNanCapabilities(transaction_id id);
     wifi_error putNanDebugCommand(NanDebugParams debug, int debug_msg_length);
-
+    wifi_error putNanBootstrappingReq(transaction_id id,
+                                      const NanBootstrappingRequest *pReq,
+                                      u16 pub_sub_id);
+    wifi_error putNanBootstrappingIndicationRsp(transaction_id id,
+                                const NanBootstrappingIndicationResponse *pRsp,
+                                      u16 pub_sub_id);
     /* Functions for NAN error translation
        For NanResponse, NanPublishTerminatedInd, NanSubscribeTerminatedInd,
        NanDisabledInd, NanTransmitFollowupInd:
@@ -235,12 +241,16 @@ public:
     void saveServiceId(u8 *service_id, u16 sub_pub_handle,
                         u32 instance_id, NanRole Pool);
     u8 *getServiceId(u32 instance_id, NanRole Pool);
+    u16 getPubSubId(u32 instance_id, NanRole pool);
     void deleteServiceId(u16 sub_handle, u32 instance_id, NanRole pool);
     void allocSvcParams();
     void reallocSvcParams(NanRole pool);
     void deallocSvcParams();
     void saveTransactionId(transaction_id id);
     transaction_id getTransactionId();
+    /* Functions for NAN Bootstrapping */
+    int handleNanBootstrappingReqInd(NanBootstrappingRequestInd  *evt);
+    int handleNanBootstrappingConfirm(NanBootstrappingConfirmInd *evt);
 };
 #endif /* __WIFI_HAL_NAN_COMMAND_H__ */
 

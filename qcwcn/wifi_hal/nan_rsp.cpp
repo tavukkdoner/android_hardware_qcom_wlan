@@ -449,6 +449,8 @@ void NanCommand::NanErrorTranslation(NanInternalStatusType firmwareErrorRecvd,
 
 int NanCommand::getNanResponse(transaction_id *id, NanResponseMsg *pRsp)
 {
+    hal_info *info = getHalInfo(wifiHandle());
+
     if (mNanVendorEvent == NULL || pRsp == NULL) {
         ALOGE("NULL check failed");
         return WIFI_ERROR_INVALID_ARGS;
@@ -495,6 +497,8 @@ int NanCommand::getNanResponse(transaction_id *id, NanResponseMsg *pRsp)
             pRsp->response_type = NAN_RESPONSE_PUBLISH;
             pRsp->body.publish_response.publish_id = \
                 pFwRsp->fwHeader.handle;
+            if (info && info->secure_nan)
+                info->secure_nan->pub_sub_id = pFwRsp->fwHeader.handle;
             break;
         }
         case NAN_MSG_ID_SUBSCRIBE_SERVICE_RSP:
@@ -506,6 +510,8 @@ int NanCommand::getNanResponse(transaction_id *id, NanResponseMsg *pRsp)
             pRsp->response_type = NAN_RESPONSE_SUBSCRIBE;
             pRsp->body.subscribe_response.subscribe_id = \
                 pFwRsp->fwHeader.handle;
+            if (info && info->secure_nan)
+                info->secure_nan->pub_sub_id = pFwRsp->fwHeader.handle;
         }
         break;
         case NAN_MSG_ID_SUBSCRIBE_SERVICE_CANCEL_RSP:
