@@ -254,6 +254,8 @@ NanIndicationType NanCommand::getIndicationType()
         return NAN_INDICATION_RANGING_REQUEST_RECEIVED;
     case NAN_MSG_ID_RANGING_RESULT_IND:
         return NAN_INDICATION_RANGING_RESULT;
+    case NAN_MSG_ID_IDENTITY_RESOLUTION_IND:
+        return NAN_INDICATION_IDENTITY_RESOLUTION;
     default:
         return NAN_INDICATION_UNKNOWN;
     }

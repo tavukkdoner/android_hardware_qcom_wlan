@@ -1504,6 +1504,14 @@ typedef struct PACKED
 
 #define NIR_STR_LEN 3
 
+typedef struct PACKED {
+    u32 cipher_version;
+    u32 nonce_len;
+    u32 tag_len;
+    u8 nonce[NAN_IDENTITY_NONCE_LEN];
+    u8 tag[NAN_IDENTITY_TAG_LEN];
+} NanNIRARequest;
+
 /* Enumeration for NAN device current role */
 enum secure_nan_role {
     SECURE_NAN_IDLE = 0,
@@ -1683,6 +1691,8 @@ void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase
 int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len);
 int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
                                     int cipher, int akmp, int role);
+wifi_error nan_set_nira_request(transaction_id id, wifi_interface_handle iface,
+                                const u8 *nan_identity_key);
 
 #ifdef __cplusplus
 }

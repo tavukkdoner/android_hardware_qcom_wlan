@@ -247,6 +247,8 @@ wifi_error nan_publish_request(transaction_id id,
               msg->nan_pairing_config.supported_bootstrapping_methods;
     }
 
+    nan_set_nira_request(id, iface, msg->nan_identity_key);
+
     nanCommand = new NanCommand(wifiHandle,
                                 0,
                                 OUI_QCA,
@@ -359,6 +361,8 @@ wifi_error nan_subscribe_request(transaction_id id,
         info->secure_nan->supported_bootstrap =
               msg->nan_pairing_config.supported_bootstrapping_methods;
     }
+
+    nan_set_nira_request(id, iface, msg->nan_identity_key);
 
     nanCommand = new NanCommand(wifiHandle,
                                 0,
@@ -1779,6 +1783,78 @@ wifi_error nan_data_end(transaction_id id,
     ret = nanCommand->requestEvent();
     if (ret != WIFI_SUCCESS)
         ALOGE("%s: requestEvent Error:%d", __FUNCTION__, ret);
+
+cleanup:
+    delete nanCommand;
+    return ret;
+}
+
+/*  Function to set NIRA attribute to firmware */
+wifi_error nan_set_nira_request(transaction_id id,
+                                wifi_interface_handle iface,
+                                const u8 *nan_identity_key)
+{
+    wifi_error ret;
+    NanNIRARequest msg;
+    struct nanIDkey *nik;
+    NanCommand *nanCommand;
+    interface_info *ifaceInfo = getIfaceInfo(iface);
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+
+    if (!info || !info->secure_nan || !info->secure_nan->dev_nik) {
+        ALOGE("%s: Error secure nan info NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    nanCommand = new NanCommand(wifiHandle,
+                                0,
+                                OUI_QCA,
+                                info->support_nan_ext_cmd?
+                                QCA_NL80211_VENDOR_SUBCMD_NAN_EXT :
+                                QCA_NL80211_VENDOR_SUBCMD_NAN);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    nik = info->secure_nan->dev_nik;
+
+    if (!nik->nik_len || !nik->nira_nonce_len || !nik->nira_tag_len)
+    {
+        ALOGV("%s: Invalid NIRA nik/nonce/tag lengths", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    if (memcmp(nik->nik_data, nan_identity_key, NAN_IDENTITY_KEY_LEN) != 0)
+    {
+        ALOGV("%s: NAN IDENTITY KEY Mismatch", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    msg.cipher_version = nik->cipher;
+    msg.nonce_len = nik->nira_nonce_len;
+    msg.tag_len = nik->nira_tag_len;
+    memcpy(msg.nonce, nik->nira_nonce, nik->nira_nonce_len);
+    memcpy(msg.tag, nik->nira_tag, nik->nira_tag_len);
+
+    ret = nanCommand->create();
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->set_iface_id(ifaceInfo->name);
+    if (ret != WIFI_SUCCESS)
+        goto cleanup;
+
+    ret = nanCommand->putNanIdentityResolutionParams(id, &msg);
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: putNanIdentityResolutionParams Error:%d",__FUNCTION__, ret);
+        goto cleanup;
+    }
+
+    ret = nanCommand->requestEvent();
+    if (ret != WIFI_SUCCESS)
+        ALOGE("%s: requestEvent Error:%d",__FUNCTION__, ret);
 
 cleanup:
     delete nanCommand;

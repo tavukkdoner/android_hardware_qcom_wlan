@@ -477,6 +477,8 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
                                 entry->addr, akmp, cipher, entry->ptk.kek,
                                 &entry->ptk.kek_len);
     }
+    nan_set_nira_request(0, (wifi_interface_handle)info->secure_nan->cb_iface_ctx,
+                         info->secure_nan->dev_nik->nik_data);
     if (!(peer->dcea_cap_info & DCEA_NPK_CACHING_ENABLED)) {
         // Send Pairing Confirmation as Followup with Peer NIK is not mandatory
         NanPairingConfirmInd evt;

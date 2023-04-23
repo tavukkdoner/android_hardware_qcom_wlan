@@ -222,6 +222,8 @@ public:
     wifi_error putNanBootstrappingIndicationRsp(transaction_id id,
                                 const NanBootstrappingIndicationResponse *pRsp,
                                       u16 pub_sub_id);
+    wifi_error putNanIdentityResolutionParams(transaction_id id,
+                                              NanNIRARequest *pReq);
     /* Functions for NAN error translation
        For NanResponse, NanPublishTerminatedInd, NanSubscribeTerminatedInd,
        NanDisabledInd, NanTransmitFollowupInd:
