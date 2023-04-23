@@ -15,7 +15,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -59,6 +59,22 @@
 extern "C"
 {
 #endif /* __cplusplus */
+
+#ifdef WPA_PASN_LIB
+#include "utils/os.h"
+#include "utils/common.h"
+#include "common/defs.h"
+#include "common/wpa_common.h"
+#include "common/sae.h"
+#include "common/ieee802_11_common.h"
+#include "common/ptksa_cache.h"
+#include "crypto/sha256.h"
+#include "crypto/sha384.h"
+#include "crypto/aes_wrap.h"
+#include "eap_peer/eap_config.h"
+#include "crypto/random.h"
+#include "pasn/pasn_common.h"
+#endif
 
 #ifndef PACKED
 #define PACKED  __attribute__((packed))
@@ -1309,6 +1325,129 @@ typedef struct PACKED
     u8 ptlv[1];
 } NanFWRangeReqRecvdInd, *pNanFWRangeReqRecvdInd;
 
+/* Enumeration for NAN device current role */
+enum secure_nan_role {
+    SECURE_NAN_IDLE = 0,
+    SECURE_NAN_BOOTSTRAPPING_INITIATOR,
+    SECURE_NAN_BOOTSTRAPPING_RESPONDER,
+    SECURE_NAN_PAIRING_INITIATOR,
+    SECURE_NAN_PAIRING_RESPONDER,
+};
+
+/* This is nan identity key params of the device */
+struct nanIDkey {
+    /* AKMP used for NIK derviation */
+    int akmp;
+    /* cipher suite type */
+    int cipher;
+    /* NIK expiration time in seconds */
+    int expiration;
+    /* buffer to hold the NIK */
+    u8 nik_data[NAN_IDENTITY_KEY_LEN];
+    /* length of NIK */
+    size_t nik_len;
+    /* nonce used in NIRA attribute */
+    u8 nira_nonce[NAN_IDENTITY_NONCE_LEN];
+    /* length of nonce */
+    size_t nira_nonce_len;
+    /* tag computed for nonce using NIK */
+    u8 nira_tag[NAN_IDENTITY_TAG_LEN];
+    /* length of tag */
+    size_t nira_tag_len;
+};
+
+/* This is data structure to hold PASN M1 frame.
+ * It will be freed, when pairing indication response is received.
+ */
+struct pasn_auth_frame {
+    /* buf to store PASN auth frame */
+    u8 data[MAX_FRAME_LEN_80211_MGMT];
+    /* length of frame */
+    u32 len;
+};
+
+/* This is nan pairing peer information.
+ * This is an entry in the list of all pairing peers.
+ */
+struct nan_pairing_peer_info {
+    /* list of pairing peers */
+    struct list_head list;
+#ifdef WPA_PASN_LIB
+    /* pasn data required for authentication */
+    struct pasn_data pasn;
+#endif
+    /* publisg/subscribe ID received in auth frames */
+    u16 pub_sub_id;
+    /* requestor instance ID */
+    u32 requestor_instance_id;
+    /* bootstrapping instance ID for the peer */
+    u32 bootstrapping_instance_id;
+    /* pairing instance ID local to the device */
+    u32 pairing_instance_id;
+    /* bssid of pairing peer */
+    u8 bssid[NAN_MAC_ADDR_LEN];
+    /* current role of the peer based on the handshake frame received */
+    enum secure_nan_role peer_role;
+    /* bootstrapping methods advertised by peer */
+    u16 peer_supported_bootstrap;
+    /* peer nan identity key. Valid for a successfully paired peer */
+    u8 peer_nik[NAN_IDENTITY_KEY_LEN];
+    /* life time of peer nik in seconds */
+    u32 peer_nik_lifetime;
+    /* passphrase length */
+    size_t passphrase_len;
+    /* passphrase */
+    char *passphrase;
+    /* sae password id to derive pt */
+    char *sae_password_id;
+    /* flag to check if peer is paired */
+    bool is_paired;
+    /* capability info in DCEA attribute */
+    u16 dcea_cap_info;
+    /* publisher ID in CSIA attribute */
+    u8 csia_pub_id;
+    struct pasn_auth_frame *frame;
+};
+
+struct wpa_secure_nan {
+    /* NAN device own address */
+    u8 own_addr[NAN_MAC_ADDR_LEN];
+    /* NAN cluster address */
+    u8 cluster_addr[NAN_MAC_ADDR_LEN];
+    /* pub sub ID of latest instance */
+    u16 pub_sub_id;
+    /* bootstrapping ID of latest instance */
+    u32 bootstrapping_id;
+    /* pairing ID of latest instance */
+    u32 pairing_id;
+    /* device capability to enable pairing setup */
+    u32 enable_pairing_setup;
+    /* device capability to enable pairing cache */
+    u32 enable_pairing_cache;
+    /* device supported bootstrapping */
+    u16 supported_bootstrap;
+    /* nan pairing ptksa cache list */
+    struct ptksa_cache *ptksa;
+    /* nan pairing initiator pmksa cache list */
+    struct rsn_pmksa_cache *initiator_pmksa;
+    /* nan pairing responder pmksa cache list */
+    struct rsn_pmksa_cache *responder_pmksa;
+    /* device nan identity key info */
+    struct nanIDkey *dev_nik;
+    /* device nan group key info */
+    struct nanGrpKey *dev_grp_keys;
+    /* nan pairing callback ctx, holds wifi_handle */
+    void *cb_ctx;
+    /* nan pairing callback iface ctx, holds wifi_interface_handle */
+    void *cb_iface_ctx;
+    /* list of pairing peers */
+    struct list_head peers;
+    /* pointer to rsne buffer */
+    struct wpabuf *rsne;
+    /* pointer to rsnxe buffer */
+    struct wpabuf *rsnxe;
+};
+
 /* Function for NAN error translation
    For NanResponse, NanPublishTerminatedInd, NanSubscribeTerminatedInd,
    NanDisabledInd, NanTransmitFollowupInd:
@@ -1319,6 +1458,10 @@ void NanErrorTranslation(NanInternalStatusType firmwareErrorRecvd,
                          u32 valueRcvd,
                          void *pRsp,
                          bool is_ndp_rsp);
+
+/* nan pairing internal function prototypes */
+int secure_nan_init(wifi_interface_handle iface);
+int secure_nan_deinit(hal_info *info);
 
 #ifdef __cplusplus
 }
