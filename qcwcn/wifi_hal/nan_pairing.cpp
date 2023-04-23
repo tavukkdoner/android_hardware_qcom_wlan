@@ -51,6 +51,7 @@ nan_pairing_add_peer_to_list(struct wpa_secure_nan *secure_nan, u8 *mac)
     mentry->pairing_instance_id = secure_nan->pairing_id++;
 
     mentry->pasn.cb_ctx = secure_nan->cb_ctx;
+    mentry->pasn.send_mgmt = nan_send_tx_mgmt;
     wpa_pasn_reset(&mentry->pasn);
     add_to_list(&mentry->list, &secure_nan->peers);
     return mentry;
@@ -122,6 +123,80 @@ void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
     }
 }
 
+/* callback handlers registered for nl message send */
+static int error_handler_nan(struct sockaddr_nl *nla, struct nlmsgerr *err,
+                         void *arg)
+{
+    struct sockaddr_nl * tmp;
+    int *ret = (int *)arg;
+    tmp = nla;
+    *ret = err->error;
+    ALOGE("%s: Error code:%d (%s)", __func__, *ret, strerror(-(*ret)));
+    return NL_STOP;
+}
+
+/* callback handlers registered for nl message send */
+static int ack_handler_nan(struct nl_msg *msg, void *arg)
+{
+    int *ret = (int *)arg;
+    struct nl_msg * a;
+
+    a = msg;
+    *ret = 0;
+    return NL_STOP;
+}
+
+/* callback handlers registered for nl message send */
+static int finish_handler_nan(struct nl_msg *msg, void *arg)
+{
+  int *ret = (int *)arg;
+  struct nl_msg * a;
+
+  a = msg;
+  *ret = 0;
+  return NL_SKIP;
+}
+
+static int nan_send_nl_msg(hal_info *info, struct nl_msg *msg)
+{
+    int res = 0;
+    struct nl_cb * cb = NULL;
+
+    cb = nl_cb_alloc(NL_CB_DEFAULT);
+    if (!cb) {
+        ALOGE("%s: Callback allocation failed",__func__);
+        res = -1;
+        goto out;
+    }
+
+    if (!info->cmd_sock) {
+        ALOGE("%s: Command socket is null",__func__);
+        res = -1;
+        goto out;
+    }
+
+    /* send message */
+    res = nl_send_auto_complete(info->cmd_sock, msg);
+    if (res < 0) {
+        ALOGE("%s: send msg failed. err = %d",__func__, res);
+        goto out;
+    }
+
+    res = 1;
+
+    nl_cb_err(cb, NL_CB_CUSTOM, error_handler_nan, &res);
+    nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler_nan, &res);
+    nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, ack_handler_nan, &res);
+
+    // err is populated as part of finish_handler
+    while (res > 0)
+        nl_recvmsgs(info->cmd_sock, cb);
+
+out:
+    nl_cb_put(cb);
+    return res;
+}
+
 static int nan_send_nl_msg_event_sock(hal_info *info, struct nl_msg *msg)
 {
     int res = 0;
@@ -134,8 +209,10 @@ static int nan_send_nl_msg_event_sock(hal_info *info, struct nl_msg *msg)
 
     /* send message */
     res = nl_send_auto_complete(info->event_sock, msg);
-    if (res < 0)
+    if (res < 0) {
+           ALOGE("%s: send msg failed. err = %d",__func__, res);
            return res;
+    }
 
     cb = nl_socket_get_cb(info->event_sock);
 
@@ -145,6 +222,36 @@ static int nan_send_nl_msg_event_sock(hal_info *info, struct nl_msg *msg)
 
     nl_cb_put(cb);
     return res;
+}
+
+int nan_send_tx_mgmt(void *ctx, const u8 *frame_buf, size_t frame_len,
+                     int noack, unsigned int freq, unsigned int wait_dur)
+{
+    wifi_handle handle = (wifi_handle)ctx;
+    hal_info *info = getHalInfo(handle);
+    struct nl_msg * msg;
+    int err = 0, l = 0;
+    u32 i, idx;
+
+    msg = nlmsg_alloc();
+
+    if (!msg) {
+        ALOGE("%s: Memory allocation failed \n", __FUNCTION__);
+        return -1;
+    }
+
+    genlmsg_put(msg, 0, 0, info->nl80211_family_id, 0, 0, NL80211_CMD_FRAME, 0);
+
+    idx = if_nametoindex(DEFAULT_NAN_IFACE);
+    nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx);
+    /* Add Frame here */
+    nla_put(msg, NL80211_ATTR_FRAME, frame_len, frame_buf);
+
+    err = nan_send_nl_msg(info, msg);
+
+out_free_msg:
+    nlmsg_free(msg);
+    return err;
 }
 
 static int nan_pairing_register_pasn_auth_frames(wifi_interface_handle iface)
