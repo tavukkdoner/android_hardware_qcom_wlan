@@ -13,6 +13,7 @@
 #include <errno.h>
 
 #ifdef WPA_PASN_LIB
+#define NAN_PAIRING_SSID "516F9A010000"
 
 /* NAN Identity key lifetime in seconds */
 static const int NIKLifetime = 43200;
@@ -89,6 +90,9 @@ void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan)
     list_for_each_entry_safe(entry, tmp, &secure_nan->peers, list) {
          del_from_list(&entry->list);
 
+         if (entry->passphrase)
+             free(entry->passphrase);
+
          if (entry->pasn.extra_ies)
              free((u8 *)entry->pasn.extra_ies);
 
@@ -109,6 +113,9 @@ void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
     list_for_each_entry_safe(entry, tmp, &secure_nan->peers, list) {
        if (memcmp(entry->bssid, mac, ETH_ALEN) == 0) {
                  del_from_list(&entry->list);
+
+                 if (entry->passphrase)
+                     free(entry->passphrase);
 
                  if (entry->pasn.extra_ies)
                      free((u8 *)entry->pasn.extra_ies);
@@ -824,6 +831,32 @@ struct wpabuf *nan_pairing_generate_rsnxe(int akmp)
         wpabuf_put_u8(buf, capab);
 
     return buf;
+}
+
+void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase,
+                              u32 len)
+{
+    const u8 *pairing_ssid;
+    size_t pairing_ssid_len;
+
+    if (!peer || !passphrase) {
+        ALOGE("%s: peer/passphrase NULL", __FUNCTION__);
+        return;
+    }
+
+    if (peer->passphrase)
+        os_free(peer->passphrase);
+
+    pairing_ssid = reinterpret_cast<const u8 *> (NAN_PAIRING_SSID);
+    pairing_ssid_len = strlen(NAN_PAIRING_SSID);
+    peer->passphrase = (char *)os_zalloc(len + 1);
+    strlcpy(peer->passphrase, reinterpret_cast<const char *> (passphrase),
+            len + 1);
+    peer->pasn.pt = sae_derive_pt(NULL, pairing_ssid, pairing_ssid_len,
+                                  (const u8 *)passphrase, len,
+                                  peer->sae_password_id);
+    /* Set passpharse for Pairing Responder to validate PASN auth1 frame*/
+    peer->pasn.password = peer->passphrase;
 }
 
 void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)

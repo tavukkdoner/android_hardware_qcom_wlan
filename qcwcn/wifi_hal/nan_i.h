@@ -1678,6 +1678,8 @@ int nan_pasn_kdk_to_nan_kek(const u8 *kdk, size_t kdk_len, const u8 *spa,
                             size_t *nan_kek_len);
 int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
                                       const u8 *pmkid);
+void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase,
+                              u32 len);
 
 #ifdef __cplusplus
 }
