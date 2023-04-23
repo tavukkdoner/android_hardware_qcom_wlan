@@ -374,6 +374,9 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
                         mgmt->sa, pasn->cipher, 43200,
                         &pasn->ptk, NULL, NULL,
                         pasn->akmp);
+        nan_pairing_set_keys_from_cache(handle, pasn->own_addr,
+                                        (u8 *)mgmt->sa, pasn->cipher,
+                                        pasn->akmp, entry->peer_role);
     }
     return WIFI_SUCCESS;
 }

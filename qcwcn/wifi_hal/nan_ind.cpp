@@ -1647,3 +1647,10 @@ int NanCommand::handleNanPairingReqInd(NanPairingRequestInd *evt)
        (*mHandler.EventPairingRequest)(evt);
     return 0;
 }
+
+int NanCommand::handleNanPairingConfirm(NanPairingConfirmInd *evt)
+{
+    if (mHandler.EventPairingConfirm)
+       (*mHandler.EventPairingConfirm)(evt);
+    return 0;
+}

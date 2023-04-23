@@ -252,6 +252,7 @@ public:
     int handleNanBootstrappingReqInd(NanBootstrappingRequestInd  *evt);
     int handleNanBootstrappingConfirm(NanBootstrappingConfirmInd *evt);
     int handleNanPairingReqInd(NanPairingRequestInd *evt);
+    int handleNanPairingConfirm(NanPairingConfirmInd *evt);
 };
 #endif /* __WIFI_HAL_NAN_COMMAND_H__ */
 

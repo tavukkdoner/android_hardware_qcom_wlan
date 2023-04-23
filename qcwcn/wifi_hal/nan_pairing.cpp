@@ -262,6 +262,254 @@ out_free_msg:
     return err;
 }
 
+static u32 wpa_alg_to_cipher_suite(enum wpa_alg alg, size_t key_len)
+{
+    switch (alg) {
+    case WPA_ALG_WEP:
+        if (key_len == 5)
+            return RSN_CIPHER_SUITE_WEP40;
+        return RSN_CIPHER_SUITE_WEP104;
+    case WPA_ALG_TKIP:
+        return RSN_CIPHER_SUITE_TKIP;
+    case WPA_ALG_CCMP:
+        return RSN_CIPHER_SUITE_CCMP;
+    case WPA_ALG_GCMP:
+        return RSN_CIPHER_SUITE_GCMP;
+    case WPA_ALG_CCMP_256:
+        return RSN_CIPHER_SUITE_CCMP_256;
+    case WPA_ALG_GCMP_256:
+        return RSN_CIPHER_SUITE_GCMP_256;
+    case WPA_ALG_BIP_CMAC_128:
+        return RSN_CIPHER_SUITE_AES_128_CMAC;
+    case WPA_ALG_BIP_GMAC_128:
+        return RSN_CIPHER_SUITE_BIP_GMAC_128;
+    case WPA_ALG_BIP_GMAC_256:
+        return RSN_CIPHER_SUITE_BIP_GMAC_256;
+    case WPA_ALG_BIP_CMAC_256:
+        return RSN_CIPHER_SUITE_BIP_CMAC_256;
+    case WPA_ALG_SMS4:
+        return RSN_CIPHER_SUITE_SMS4;
+    case WPA_ALG_KRK:
+        return RSN_CIPHER_SUITE_KRK;
+    default:
+        ALOGI("NAN: Unexpected encryption algorithm %d", alg);
+        return 0;
+    }
+}
+
+static int nan_pairing_set_key(hal_info *info, int alg, const u8 *addr,
+                               int key_idx, int set_tx, const u8 *seq,
+                               size_t seq_len, const u8 *key, size_t key_len,
+                               int key_flag)
+{
+    int idx;
+    u32 suite;
+    struct nl_msg *msg;
+    struct nl_msg *key_msg;
+    int ret = 0;
+
+    idx = if_nametoindex(DEFAULT_NAN_IFACE);
+
+    if (check_key_flag((enum key_flag) key_flag)) {
+        ALOGE("%s: invalid key_flag", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    msg = nlmsg_alloc();
+    key_msg = nlmsg_alloc();
+    if (!msg || !key_msg) {
+        ALOGE("%s: Memory allocation failed\n", __FUNCTION__);
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+
+    if ((key_flag & KEY_FLAG_PAIRWISE_MASK) ==
+        KEY_FLAG_PAIRWISE_RX_TX_MODIFY) {
+        ALOGV("%s: nl80211: SET_KEY (pairwise RX/TX modify)", __FUNCTION__);
+        genlmsg_put(msg, 0, 0, info->nl80211_family_id, 0, 0,
+                    NL80211_CMD_SET_KEY, 0);
+        nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx);
+        if(!msg)
+           goto fail2;
+    } else if (alg == WPA_ALG_NONE && (key_flag & KEY_FLAG_RX_TX)) {
+        ALOGE("%s: invalid key_flag to delete key", __FUNCTION__);
+        ret = WIFI_ERROR_INVALID_ARGS;
+        goto fail2;
+    } else if (alg == WPA_ALG_NONE) {
+        ALOGV("%s: nl80211: DEL_KEY", __FUNCTION__);
+        genlmsg_put(msg, 0, 0, info->nl80211_family_id, 0, 0,
+                    NL80211_CMD_DEL_KEY, 0);
+        nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx);
+        if(!msg)
+           goto fail2;
+    } else {
+        suite = wpa_alg_to_cipher_suite((enum wpa_alg) alg, key_len);
+        if (!suite) {
+            ret = WIFI_ERROR_INVALID_ARGS;
+            goto fail2;
+        }
+        ALOGV("%s: nl80211: NEW_KEY", __FUNCTION__);
+        genlmsg_put(msg, 0, 0, info->nl80211_family_id, 0, 0,
+                    NL80211_CMD_NEW_KEY, 0);
+        nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx);
+        if (!msg)
+            goto fail2;
+        if (nla_put(key_msg, NL80211_KEY_DATA, key_len, key) ||
+            nla_put_u32(key_msg, NL80211_KEY_CIPHER, suite))
+            goto fail;
+        if (seq && seq_len) {
+            if (nla_put(key_msg, NL80211_KEY_SEQ, seq_len, seq))
+                goto fail;
+            ALOGV("%s: NL80211_KEY_SEQ seq=%p, sed_len=%lu", __FUNCTION__, seq, (unsigned long) seq_len);
+        }
+    }
+    if (addr && !is_broadcast_ether_addr(addr)) {
+        ALOGV("%s: addr=" MACSTR, __FUNCTION__, MAC2STR(addr));
+        if (nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr) ||
+            nla_put(msg, NL80211_ATTR_BSS, ETH_ALEN, addr))
+            goto fail;
+        if ((key_flag & KEY_FLAG_PAIRWISE_MASK) ==
+            KEY_FLAG_PAIRWISE_RX ||
+            (key_flag & KEY_FLAG_PAIRWISE_MASK) ==
+            KEY_FLAG_PAIRWISE_RX_TX_MODIFY) {
+            if (nla_put_u8(key_msg, NL80211_KEY_MODE,
+                      key_flag == KEY_FLAG_PAIRWISE_RX ? NL80211_KEY_NO_TX : NL80211_KEY_SET_TX))
+                goto fail;
+        } else if ((key_flag & KEY_FLAG_GROUP_MASK) ==
+                    KEY_FLAG_GROUP_RX) {
+            ALOGV("%s:    RSN IBSS RX GTK", __FUNCTION__);
+            if (nla_put_u32(key_msg, NL80211_KEY_TYPE,
+                            NL80211_KEYTYPE_GROUP))
+                goto fail;
+        } else if (!(key_flag & KEY_FLAG_PAIRWISE)) {
+            ALOGV("%s:  key_flag missing PAIRWISE when setting a pairwise key", __FUNCTION__);
+            ret = WIFI_ERROR_INVALID_ARGS;
+            goto fail;
+        } else {
+            ALOGV("%s: pairwise key", __FUNCTION__);
+        }
+    } else if ((key_flag & KEY_FLAG_PAIRWISE) ||
+               !(key_flag & KEY_FLAG_GROUP)) {
+        ALOGE("%s: invalid key_flag for a broadcast key", __FUNCTION__);
+        ret = WIFI_ERROR_INVALID_ARGS;
+        goto fail;
+    } else {
+        ALOGV("%s: broadcast key", __FUNCTION__);
+    }
+    if (nla_put_u8(key_msg, NL80211_KEY_IDX, key_idx) ||
+        nla_put_nested(msg, NL80211_ATTR_KEY, key_msg))
+        goto fail;
+
+    ret = nan_send_nl_msg(info, msg);
+fail:
+    nlmsg_free(msg);
+fail2:
+    nlmsg_free(key_msg);
+    return ret;
+}
+
+int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
+                                    int cipher, int akmp, int peer_role)
+{
+
+    const u8 *tk;
+    size_t tk_len;
+    enum wpa_alg alg;
+    u32 size = 0;
+    NanDebugParams cfg_debug;
+    struct ptksa_cache_entry *entry;
+    struct nan_pairing_peer_info *peer;
+    hal_info *info = getHalInfo(handle);
+    struct pasn_data *pasn;
+    NanCommand *nanCommand = NULL;
+
+    nanCommand = NanCommand::instance(handle);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    peer = nan_pairing_get_peer_from_list(info->secure_nan, bssid);
+    if (!peer) {
+        ALOGE("nl80211: Peer not found in the pairing list");
+        return WIFI_ERROR_UNKNOWN;
+    }
+    pasn = &peer->pasn;
+    entry = ptksa_cache_get(info->secure_nan->ptksa, bssid, cipher);
+    if (!entry) {
+        ALOGE("NAN Pairing: peer " MACSTR "not present in PTKSA cache",
+              MAC2STR(bssid));
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    if (os_memcmp(entry->own_addr, src_addr, ETH_ALEN) != 0) {
+        ALOGE("NAN Pairing: src addr " MACSTR " and PTKSA entry src addr " MACSTR " differ",
+              MAC2STR(src_addr), MAC2STR(entry->own_addr));
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    tk = entry->ptk.tk;
+    tk_len = entry->ptk.tk_len;
+    alg = wpa_cipher_to_alg(entry->cipher);
+
+    ALOGD("PASN:" MACSTR "present in PTKSA cache",
+          MAC2STR(bssid));
+
+    nan_pairing_set_key(info, alg, bssid, 0, 1, NULL, 0, tk, tk_len,
+                        KEY_FLAG_PAIRWISE_RX_TX);
+
+    if (peer_role == SECURE_NAN_PAIRING_INITIATOR) {
+        memset(&cfg_debug, 0, sizeof(NanDebugParams));
+        cfg_debug.cmd = NAN_TEST_MODE_CMD_PMK;
+        nan_pasn_kdk_to_ndp_pmk(entry->ptk.kdk, entry->ptk.kdk_len,
+                                entry->addr, entry->own_addr,
+                                cfg_debug.debug_cmd_data, &size);
+        if (!size) {
+            ALOGE("%s: Invalid NDP PMK len", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        nan_debug_command_config(0, (wifi_interface_handle)info->secure_nan->cb_iface_ctx,
+                                 cfg_debug, size + 4);
+        nan_pasn_kdk_to_nan_kek(entry->ptk.kdk, entry->ptk.kdk_len, entry->addr,
+                                entry->own_addr, akmp, cipher, entry->ptk.kek,
+                                &entry->ptk.kek_len);
+    } else {
+        nan_pasn_kdk_to_nan_kek(entry->ptk.kdk, entry->ptk.kdk_len, entry->own_addr,
+                                entry->addr, akmp, cipher, entry->ptk.kek,
+                                &entry->ptk.kek_len);
+    }
+    if (!(peer->dcea_cap_info & DCEA_NPK_CACHING_ENABLED)) {
+        // Send Pairing Confirmation as Followup with Peer NIK is not mandatory
+        NanPairingConfirmInd evt;
+        evt.pairing_instance_id = peer->pairing_instance_id;
+        evt.rsp_code = NAN_PAIRING_REQUEST_ACCEPT;
+        evt.reason_code = NAN_STATUS_SUCCESS;
+        evt.enable_pairing_cache = 0;
+
+        if (peer->is_paired)
+            evt.nan_pairing_request_type = NAN_PAIRING_VERIFICATION;
+        else
+            evt.nan_pairing_request_type = NAN_PAIRING_SETUP;
+
+        if (pasn->akmp == WPA_KEY_MGMT_PASN)
+            evt.npk_security_association.akm = PASN;
+        else
+            evt.npk_security_association.akm = SAE;
+
+        if (info->secure_nan->dev_nik)
+            memcpy(evt.npk_security_association.local_nan_identity_key,
+                   info->secure_nan->dev_nik->nik_data,
+                   NAN_IDENTITY_KEY_LEN);
+
+        evt.npk_security_association.npk.pmk_len = pasn->pmk_len;
+        memcpy(evt.npk_security_association.npk.pmk, pasn->pmk,
+               pasn->pmk_len);
+
+        nanCommand->handleNanPairingConfirm(&evt);
+        peer->is_paired = true;
+    }
+    return WIFI_SUCCESS;
+}
+
 static int nan_pairing_register_pasn_auth_frames(wifi_interface_handle iface)
 {
     u32 idx;

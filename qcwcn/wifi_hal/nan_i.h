@@ -1681,6 +1681,8 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
 void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase,
                               u32 len);
 int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len);
+int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
+                                    int cipher, int akmp, int role);
 
 #ifdef __cplusplus
 }
