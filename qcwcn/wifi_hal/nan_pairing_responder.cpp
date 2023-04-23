@@ -29,11 +29,11 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef WPA_PASN_LIB
-
 #include "wifi_hal.h"
 #include "nan_i.h"
 #include "nancommand.h"
+
+#ifdef WPA_PASN_LIB
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,6 +59,178 @@ void nan_pairing_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
    return pmksa_cache_auth_deinit(pmksa);
 }
 
+
+static void nan_pairing_responder_start(hal_info *info, u8 *peer_addr,
+                                        bool is_opportunistic, bool verify)
+{
+    struct pasn_data *pasn;
+    struct nan_pairing_peer_info *peer;
+    u8 pmkid[PMKID_LEN] = {0};
+    struct wpa_secure_nan *secure_nan;
+
+    if (!info) {
+        ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return;
+    }
+
+    secure_nan = info->secure_nan;
+    if (!secure_nan) {
+        ALOGE("%s: secure NAN uninitialized", __FUNCTION__);
+        return;
+    }
+
+    peer = nan_pairing_get_peer_from_list(secure_nan, peer_addr);
+    if (!peer) {
+        ALOGE("%s: peer not found : ADDR=" MACSTR,
+              __FUNCTION__, MAC2STR(peer_addr));
+        return;
+    }
+
+    pasn = &peer->pasn;
+    pasn->derive_kdk = true;
+    pasn->kdk_len = WPA_KDK_MAX_LEN;
+    peer->peer_role = SECURE_NAN_PAIRING_INITIATOR;
+
+    if (secure_nan->rsne)
+        wpabuf_free(secure_nan->rsne);
+    if (secure_nan->rsnxe)
+        wpabuf_free(secure_nan->rsnxe);
+
+    pasn->cipher = WPA_CIPHER_CCMP;
+    pasn->rsn_pairwise = WPA_CIPHER_CCMP;
+    if (!is_opportunistic) {
+        pasn->akmp = WPA_KEY_MGMT_SAE;
+        pasn->wpa_key_mgmt = WPA_KEY_MGMT_SAE;
+        pasn->rsnxe_capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+    } else {
+       pasn->akmp = WPA_KEY_MGMT_PASN;
+       pasn->wpa_key_mgmt = WPA_KEY_MGMT_PASN;
+    }
+
+    if (verify) {
+        // Note: Framework send local NIK, use it and derive new NIRA
+        if ((secure_nan->dev_nik->nira_nonce_len +
+             secure_nan->dev_nik->nira_tag_len) > PMKID_LEN) {
+            ALOGE("%s: Invalid nonce/tag len, nonce_len = %d, tag len = %d",
+                  __FUNCTION__, secure_nan->dev_nik->nira_nonce_len,
+                  secure_nan->dev_nik->nira_tag_len);
+        } else {
+            os_memcpy(pmkid, secure_nan->dev_nik->nira_nonce,
+                      secure_nan->dev_nik->nira_nonce_len);
+            os_memcpy(&pmkid[secure_nan->dev_nik->nira_nonce_len],
+                      secure_nan->dev_nik->nira_tag,
+                      secure_nan->dev_nik->nira_tag_len);
+            pasn->custom_pmkid_valid = true;
+            os_memcpy(pasn->custom_pmkid, pmkid, PMKID_LEN);
+        }
+        // construct wrapped data for csia, nira
+        nan_pairing_add_verification_ies(secure_nan, pasn, peer->peer_role);
+    } else {
+        // construct wrapped data for dcea, csia, npba
+        nan_pairing_add_setup_ies(secure_nan, pasn, peer->peer_role);
+    }
+
+    secure_nan->rsnxe = nan_pairing_generate_rsnxe(pasn->akmp);
+    if (secure_nan->rsnxe)
+        pasn->rsnxe_ie = wpabuf_head_u8(secure_nan->rsnxe);
+
+    pasn->pmksa = secure_nan->responder_pmksa;
+    return;
+}
+
+wifi_error nan_pairing_indication_response(transaction_id id,
+                                           wifi_interface_handle iface,
+                                           NanPairingIndicationResponse* msg)
+{
+    struct pasn_data *pasn;
+    struct nan_pairing_peer_info *peer;
+    NanCommand *nanCommand = NULL;
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+    const struct ieee80211_mgmt *mgmt = NULL;
+    struct wpa_secure_nan *secure_nan;
+    int ret;
+
+    if (!info) {
+        ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    secure_nan = info->secure_nan;
+    if (!secure_nan) {
+        ALOGE("%s: Error secure nan NULL", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    if (!msg) {
+        ALOGE("%s: msg req invalid", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    nanCommand = NanCommand::instance(wifiHandle);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    peer = nan_pairing_get_peer_from_id(secure_nan, msg->pairing_instance_id);
+    if (!peer && !peer->frame) {
+        ALOGE("%s: no frame to process", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    pasn = &peer->pasn;
+
+    if (msg->rsp_code == NAN_PAIRING_REQUEST_REJECT) {
+        ALOGE("%s: received reject rsp", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    mgmt = (struct ieee80211_mgmt *)peer->frame->data;
+    memcpy(pasn->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN);
+    memcpy(pasn->bssid, nanCommand->getClusterAddr(), NAN_MAC_ADDR_LEN);
+    os_memcpy(pasn->peer_addr, (u8 *)mgmt->sa, NAN_MAC_ADDR_LEN);
+
+    nan_pairing_responder_start(info, peer->bssid, msg->is_opportunistic,
+                                (msg->nan_pairing_request_type == NAN_PAIRING_VERIFICATION));
+
+    if (!msg->is_opportunistic) {
+        pasn->akmp = WPA_KEY_MGMT_SAE;
+       /* Get the security key and configure it to secure pasn ctx */
+       if (msg->nan_pairing_request_type == NAN_PAIRING_VERIFICATION) {
+           ALOGV("%s: verification, key info not required", __FUNCTION__);
+       } else if (msg->key_info.key_type == NAN_SECURITY_KEY_INPUT_PASSPHRASE) {
+          nan_pairing_set_password(peer,
+                              msg->key_info.body.passphrase_info.passphrase,
+                              msg->key_info.body.passphrase_info.passphrase_len);
+
+       } else if (msg->key_info.key_type == NAN_SECURITY_KEY_INPUT_PMK) {
+          ALOGE("%s: Error PMK not supported", __FUNCTION__);
+          goto fail;
+       } else {
+          ALOGE("%s: Error key type invalid", __FUNCTION__);
+          goto fail;
+       }
+    } else {
+        pasn->akmp = WPA_KEY_MGMT_PASN;
+    }
+    ret = handle_auth_pasn_1(pasn, pasn->own_addr, (u8 *)mgmt->sa, mgmt,
+                             peer->frame->len);
+    if (ret == -1) {
+        ALOGE("%s: Handle auth pasn 1 failed", __FUNCTION__);
+        wpa_pasn_reset(pasn);
+        peer->peer_role = SECURE_NAN_IDLE;
+    }
+    free(peer->frame);
+    peer->frame = NULL;
+
+    return WIFI_SUCCESS;
+
+fail:
+    free(peer->frame);
+    peer->frame = NULL;
+    return WIFI_ERROR_UNKNOWN;
+}
 
 int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
 {
@@ -204,5 +376,13 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
                         pasn->akmp);
     }
     return WIFI_SUCCESS;
+}
+#else /* WPA_PASN_LIB */
+wifi_error nan_pairing_indication_response(transaction_id id,
+                                           wifi_interface_handle iface,
+                                           NanPairingIndicationResponse* msg)
+{
+    ALOGE(" nan pairing not supported");
+    return WIFI_ERROR_NOT_SUPPORTED;
 }
 #endif /* WPA_PASN_LIB */
