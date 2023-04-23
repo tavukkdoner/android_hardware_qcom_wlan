@@ -120,6 +120,18 @@ int secure_nan_init(wifi_interface_handle iface)
     if (!secure_nan->dev_nik)
         return -1;
 
+    secure_nan->initiator_pmksa = nan_pairing_initiator_pmksa_cache_init();
+    if (!secure_nan->initiator_pmksa) {
+        ALOGE("Secure NAN Initiator PMKSA cache init failed");
+        return -1;
+    }
+
+    secure_nan->responder_pmksa = nan_pairing_responder_pmksa_cache_init();
+    if (!secure_nan->responder_pmksa) {
+        ALOGE("Secure NAN Responder PMKSA cache init failed");
+        return -1;
+    }
+
     info->secure_nan = secure_nan;
     //! Initailise peers list
     INITIALISE_LIST(&secure_nan->peers);
@@ -139,6 +151,9 @@ int secure_nan_deinit(hal_info *info)
 
     if (info->secure_nan->dev_nik)
         nan_pairing_nik_deinit(info->secure_nan->dev_nik);
+
+    nan_pairing_initiator_pmksa_cache_deinit(info->secure_nan->initiator_pmksa);
+    nan_pairing_responder_pmksa_cache_deinit(info->secure_nan->responder_pmksa);
 
     os_free(info->secure_nan);
     info->secure_nan = NULL;

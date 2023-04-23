@@ -125,7 +125,9 @@ LOCAL_SRC_FILES := \
 	radio_mode.cpp \
 	tcp_params_update.cpp \
 	wifihal_vendor.cpp \
-	nan_pairing.cpp
+	nan_pairing.cpp \
+	nan_pairing_responder.cpp \
+	nan_pairing_initiator.cpp
 
 LOCAL_MODULE := libwifi-hal-qcom
 LOCAL_VENDOR_MODULE := true
@@ -240,7 +242,9 @@ LOCAL_SRC_FILES := \
 	radio_mode.cpp \
 	tcp_params_update.cpp \
 	wifihal_vendor.cpp \
-	nan_pairing.cpp
+	nan_pairing.cpp \
+	nan_pairing_responder.cpp \
+	nan_pairing_initiator.cpp
 
 LOCAL_CFLAGS += -Wall -Werror
 LOCAL_MODULE := libwifi-hal-qcom

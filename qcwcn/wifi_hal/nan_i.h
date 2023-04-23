@@ -1466,6 +1466,10 @@ int secure_nan_init(wifi_interface_handle iface);
 int secure_nan_deinit(hal_info *info);
 void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan);
 unsigned int nan_pairing_get_nik_lifetime(struct nanIDkey *nik);
+struct rsn_pmksa_cache *nan_pairing_initiator_pmksa_cache_init(void);
+void nan_pairing_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
+struct rsn_pmksa_cache *nan_pairing_responder_pmksa_cache_init(void);
+void nan_pairing_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
 
 #ifdef __cplusplus
 }
