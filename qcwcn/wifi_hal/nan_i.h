@@ -699,6 +699,8 @@ typedef struct PACKED
 #define NAN_IE_VENDOR_TYPE 0x506f9a13
 #define DCEA_PARING_SETUP_ENABLED  BIT(8)
 #define DCEA_NPK_CACHING_ENABLED  BIT(9)
+#define WPA_NDP_PMK_MAX_LEN 32
+#define WPA_OPP_NPK_MAX_LEN 32
 
 /* As per NAN spec, below are the values defined for CSID attribute */
 #define NCS_SK_128          1
@@ -1546,6 +1548,15 @@ void nan_pairing_add_setup_ies(struct wpa_secure_nan *secure_nan,
                                struct pasn_data *pasn, int peer_role);
 void nan_pairing_add_verification_ies(struct wpa_secure_nan *secure_nan,
                                       struct pasn_data *pasn, int peer_role);
+int nan_pasn_kdk_to_ndp_pmk(const u8 *kdk, size_t kdk_len, const u8 *spa,
+                            const u8 *bssid, u8 *ndp_pmk, u32 *ndp_pmk_len);
+int nan_pasn_kdk_to_opportunistic_npk(const u8 *kdk, size_t kdk_len,
+                                      const u8 *spa, const u8 *bssid,
+                                      int akmp, int cipher, u8 *opp_npk,
+                                      size_t *opp_npk_len);
+int nan_pasn_kdk_to_nan_kek(const u8 *kdk, size_t kdk_len, const u8 *spa,
+                            const u8 *bssid, int akmp, int cipher, u8 *nan_kek,
+                            size_t *nan_kek_len);
 
 #ifdef __cplusplus
 }
