@@ -1465,7 +1465,10 @@ wifi_error nan_data_request_initiator(transaction_id id,
     NanCommand *nanCommand = NULL;
     NanCommand *t_nanCommand = NULL;
     wifi_handle wifiHandle = getWifiHandle(iface);
-
+    hal_info *info = getHalInfo(wifiHandle);
+#ifdef WPA_PASN_LIB
+    struct ptksa_cache_entry *entry = NULL;
+#endif
     if (msg == NULL)
         return WIFI_ERROR_INVALID_ARGS;
 
@@ -1479,6 +1482,23 @@ wifi_error nan_data_request_initiator(transaction_id id,
     t_nanCommand = NanCommand::instance(wifiHandle);
     if (t_nanCommand == NULL)
         ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+
+#ifdef WPA_PASN_LIB
+    if (info && info->secure_nan) {
+        entry = ptksa_cache_get(info->secure_nan->ptksa,
+                                msg->peer_disc_mac_addr, WPA_CIPHER_NONE);
+        if (entry) {
+            msg->cipher_type = NAN_CIPHER_SUITE_SHARED_KEY_128_MASK;
+
+            nan_pasn_kdk_to_ndp_pmk(entry->ptk.kdk, entry->ptk.kdk_len,
+                                    entry->own_addr, entry->addr,
+                                    msg->key_info.body.pmk_info.pmk,
+                                    &msg->key_info.body.pmk_info.pmk_len);
+
+            msg->key_info.key_type = NAN_SECURITY_KEY_INPUT_PMK;
+        }
+    }
+#endif
 
     if ((msg->cipher_type != NAN_CIPHER_SUITE_SHARED_KEY_NONE) &&
         (msg->key_info.body.pmk_info.pmk_len == 0) &&
@@ -1646,6 +1666,10 @@ wifi_error nan_data_indication_response(transaction_id id,
     NanCommand *nanCommand = NULL;
     NanCommand *t_nanCommand = NULL;
     wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+#ifdef WPA_PASN_LIB
+    struct ptksa_cache_entry *entry = NULL;
+#endif
 
     if (msg == NULL)
         return WIFI_ERROR_INVALID_ARGS;
@@ -1660,6 +1684,23 @@ wifi_error nan_data_indication_response(transaction_id id,
     t_nanCommand = NanCommand::instance(wifiHandle);
     if (t_nanCommand == NULL)
         ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+
+#ifdef WPA_PASN_LIB
+    if (info && info->secure_nan) {
+        entry = ptksa_cache_get(info->secure_nan->ptksa,
+                                msg->peer_disc_mac_addr, WPA_CIPHER_NONE);
+        if (entry) {
+            msg->cipher_type = NAN_CIPHER_SUITE_SHARED_KEY_128_MASK;
+
+            nan_pasn_kdk_to_ndp_pmk(entry->ptk.kdk, entry->ptk.kdk_len,
+                                    entry->own_addr, entry->addr,
+                                    msg->key_info.body.pmk_info.pmk,
+                                    &msg->key_info.body.pmk_info.pmk_len);
+
+            msg->key_info.key_type = NAN_SECURITY_KEY_INPUT_PMK;
+        }
+    }
+#endif
 
     if ((msg->cipher_type != NAN_CIPHER_SUITE_SHARED_KEY_NONE) &&
         (msg->key_info.body.pmk_info.pmk_len == 0) &&
