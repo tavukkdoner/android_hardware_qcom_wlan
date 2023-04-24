@@ -60,6 +60,19 @@ void nan_pairing_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
 }
 
 
+int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
+                                          u8 *bssid, u8 *pmkid)
+{
+    struct rsn_pmksa_cache_entry *entry;
+
+    entry = pmksa_cache_auth_get(pmksa, bssid, NULL);
+    if (entry) {
+          os_memcpy(pmkid, entry->pmkid, PMKID_LEN);
+          return 0;
+    }
+    return -1;
+}
+
 static void nan_pairing_responder_start(hal_info *info, u8 *peer_addr,
                                         bool is_opportunistic, bool verify)
 {

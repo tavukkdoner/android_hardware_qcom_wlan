@@ -262,6 +262,73 @@ out_free_msg:
     return err;
 }
 
+wifi_error nan_get_pairing_tk(transaction_id id,
+                              wifi_interface_handle iface,
+                              NanPairingTK *msg)
+{
+    interface_info *ifaceInfo = getIfaceInfo(iface);
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+    struct ptksa_cache_entry *entry;
+
+    if (!info || !info->secure_nan || !msg) {
+        ALOGE("%s: secure nan or msg NULL", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    entry = ptksa_cache_get(info->secure_nan->ptksa,
+                            msg->bssid, WPA_CIPHER_NONE);
+    if (entry) {
+        if (sizeof(msg->tk) < entry->ptk.tk_len) {
+            ALOGE("%s: TK length invalid. len = %d", __FUNCTION__,
+                  entry->ptk.tk_len);
+            return WIFI_ERROR_UNKNOWN;
+        }
+        msg->tk_len = entry->ptk.tk_len;
+        memcpy(msg->tk, entry->ptk.tk, entry->ptk.tk_len);
+    }
+    return WIFI_SUCCESS;
+}
+
+wifi_error nan_get_pairing_pmkid(transaction_id id,
+                                 wifi_interface_handle iface,
+                                 NanPairingPmkid *msg)
+{
+    interface_info *ifaceInfo = getIfaceInfo(iface);
+    wifi_handle wifiHandle = getWifiHandle(iface);
+    hal_info *info = getHalInfo(wifiHandle);
+    struct wpa_secure_nan *secure_nan;
+    struct nan_pairing_peer_info *peer;
+
+    if (!info || !info->secure_nan || !msg) {
+        ALOGE("%s: secure nan or msg NULL", __FUNCTION__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    secure_nan = info->secure_nan;
+    peer = nan_pairing_get_peer_from_list(secure_nan, (u8 *)msg->bssid);
+    if (!peer) {
+        ALOGE(" %s :No Peer in pairing list, ADDR=" MACSTR,
+              __FUNCTION__, MAC2STR(msg->bssid));
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    if (peer->peer_role == SECURE_NAN_PAIRING_INITIATOR) {
+        if (!nan_pairing_initiator_pmksa_cache_get(secure_nan->initiator_pmksa,
+                                                    msg->bssid, msg->pmkid))
+            msg->pmkid_len = PMKID_LEN;
+    } else if (peer->peer_role == SECURE_NAN_PAIRING_RESPONDER) {
+        if (!nan_pairing_responder_pmksa_cache_get(secure_nan->responder_pmksa,
+                                                    msg->bssid, msg->pmkid))
+            msg->pmkid_len = PMKID_LEN;
+    } else {
+        ALOGE(" %s :Peer role invalid, ADDR=" MACSTR,
+              __FUNCTION__, MAC2STR(msg->bssid));
+        return WIFI_ERROR_UNKNOWN;
+    }
+    return WIFI_SUCCESS;
+}
+
 wifi_error nan_validate_shared_key_desc(hal_info *info, const u8 *addr, u8 *buf,
                                         u16 len)
 {
@@ -1625,6 +1692,22 @@ int secure_nan_deinit(hal_info *info)
 {
     ALOGE("Secure NAN deinit not supported");
     return -1;
+}
+
+wifi_error nan_get_pairing_tk(transaction_id id,
+                              wifi_interface_handle iface,
+                              NanPairingTK *msg)
+{
+    ALOGE("NAN Pairing get TK not supported");
+    return WIFI_ERROR_NOT_SUPPORTED;
+}
+
+wifi_error nan_get_pairing_pmkid(transaction_id id,
+                                 wifi_interface_handle iface,
+                                 NanPairingPmkid *msg)
+{
+    ALOGE("NAN Pairing get PMKID not supported");
+    return WIFI_ERROR_NOT_SUPPORTED;
 }
 
 #endif /* WPA_PASN_LIB */

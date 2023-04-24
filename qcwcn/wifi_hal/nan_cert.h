@@ -42,6 +42,8 @@ extern "C"
 #define NAN_CERT_VERSION                        5
 #define NAN_MAX_DEBUG_MESSAGE_DATA_LEN          100
 #define NAN_MAX_ALLOWED_DW_AWAKE_INTERVAL       16
+#define NAN_MAX_TK_LENGTH                       16
+#define NAN_MAX_PMKID_LENGTH                    16
 
 typedef struct {
     /* NAN master rank being advertised by DE */
@@ -227,6 +229,24 @@ typedef struct PACKED {
     u8 debug_cmd_data[NAN_MAX_DEBUG_MESSAGE_DATA_LEN];
 } NanDebugParams;
 
+typedef struct PACKED {
+    /* pairing tk buff */
+    u8 tk[NAN_MAX_TK_LENGTH];
+    /* tk length, tk valid if non zero */
+    u8 tk_len;
+    /* pairing peer bssid */
+    u8 bssid[NAN_MAC_ADDR_LEN];
+} NanPairingTK;
+
+typedef struct PACKED {
+    /* pairing pmkid buff */
+    u8 pmkid[NAN_MAX_PMKID_LENGTH];
+    /* pmkid length, pmkid valid if non zero */
+    u8 pmkid_len;
+    /* pairing peer bssid */
+    u8 bssid[NAN_MAC_ADDR_LEN];
+} NanPairingPmkid;
+
 /*
    Function to get the sta_parameter expected by Sigma
    as per CAPI spec.
@@ -239,6 +259,14 @@ wifi_error nan_debug_command_config(transaction_id id,
                                    wifi_interface_handle iface,
                                    NanDebugParams msg,
                                    int debug_msg_length);
+
+wifi_error nan_get_pairing_tk(transaction_id id,
+                              wifi_interface_handle iface,
+                              NanPairingTK *msg);
+
+wifi_error nan_get_pairing_pmkid(transaction_id id,
+                                 wifi_interface_handle iface,
+                                 NanPairingPmkid *msg);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

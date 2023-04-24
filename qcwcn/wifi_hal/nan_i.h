@@ -1806,6 +1806,10 @@ wifi_error nan_validate_shared_key_desc(hal_info *info, const u8 *addr, u8 *buf,
                                         u16 len);
 wifi_error nan_get_shared_key_descriptor(hal_info *info, const u8 *addr,
                                          NanSharedKeyRequest *key);
+int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
+                                          u8 *bssid, u8 *pmkid);
+int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
+                                          u8 *bssid, u8 *pmkid);
 
 #ifdef __cplusplus
 }

@@ -60,6 +60,20 @@ void nan_pairing_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
 }
 
 
+int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
+                                          u8 *bssid, u8 *pmkid)
+{
+    struct rsn_pmksa_cache_entry *entry;
+
+    entry = pmksa_cache_get(pmksa, bssid, NULL, NULL, NULL, 0);
+    if (entry) {
+          os_memcpy(pmkid, entry->pmkid, PMKID_LEN);
+          return 0;
+    }
+    return -1;
+}
+
+
 /*  Function to trigger pairing setup or verification request */
 wifi_error nan_pairing_request(transaction_id id,
                                wifi_interface_handle iface,
