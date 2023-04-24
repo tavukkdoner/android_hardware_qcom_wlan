@@ -442,6 +442,7 @@ int NanCommand::getNanMatch(NanMatchInd *event)
             event->cluster_attribute_len = outputTlv.length;
             break;
         case NAN_TLV_TYPE_NAN_CSID:
+        case NAN_TLV_TYPE_NAN_CSID_EXT:
             if (outputTlv.length > sizeof(event->peer_cipher_type)) {
                 outputTlv.length = sizeof(event->peer_cipher_type);
             }

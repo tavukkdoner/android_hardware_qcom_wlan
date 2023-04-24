@@ -888,8 +888,14 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
     if (pReq->cipher_type) {
         NanCsidType pNanCsidType;
         pNanCsidType.csid_type = pReq->cipher_type;
-        tlvs = addTlv(NAN_TLV_TYPE_NAN_CSID, sizeof(NanCsidType),
-                        (const u8*)&pNanCsidType, tlvs);
+
+        u16 tlv_type = NAN_TLV_TYPE_NAN_CSID;
+
+        if (pNanCsidType.csid_type & NAN_EXT_CSID_TYPE_MASK)
+            tlv_type = NAN_TLV_TYPE_NAN_CSID_EXT;
+
+        tlvs = addTlv(tlv_type, sizeof(NanCsidType),
+                      (const u8*)&pNanCsidType, tlvs);
     }
 
     if ((pReq->key_info.key_type ==  NAN_SECURITY_KEY_INPUT_PMK) &&
@@ -1238,8 +1244,14 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
     if (pReq->cipher_type) {
         NanCsidType pNanCsidType;
         pNanCsidType.csid_type = pReq->cipher_type;
-        tlvs = addTlv(NAN_TLV_TYPE_NAN_CSID, sizeof(NanCsidType),
-                        (const u8*)&pNanCsidType, tlvs);
+
+        u16 tlv_type = NAN_TLV_TYPE_NAN_CSID;
+
+        if (pNanCsidType.csid_type & NAN_EXT_CSID_TYPE_MASK)
+            tlv_type = NAN_TLV_TYPE_NAN_CSID_EXT;
+
+        tlvs = addTlv(tlv_type, sizeof(NanCsidType),
+                      (const u8*)&pNanCsidType, tlvs);
     }
 
     if ((pReq->key_info.key_type ==  NAN_SECURITY_KEY_INPUT_PMK) &&

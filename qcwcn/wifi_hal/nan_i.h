@@ -1244,6 +1244,9 @@ typedef struct PACKED
 #define NAN_GTKSA_IGTKSA_SUPPORTED_BIGTKSA_NOT_SUPPORTED   0x01
 #define NAN_GTKSA_IGTKSA_BIGTKSA_SUPPORTED                 0x02
 
+/* Mask to check extended csid type is set */
+#define NAN_EXT_CSID_TYPE_MASK  ~0x3
+
 /* NAN Cipher Suite Shared Key */
 typedef struct PACKED
 {
