@@ -1496,6 +1496,72 @@ void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase
     peer->pasn.password = peer->passphrase;
 }
 
+void nan_pairing_derive_grp_keys(struct wpa_secure_nan *secure_nan, u32 cipher_caps)
+{
+    int groupMfp;
+    int len = 0;
+    struct nanGrpKey *grp_key;
+
+    if (!secure_nan) {
+        ALOGE("%s: Secure NAN Null ", __FUNCTION__);
+        return;
+    }
+
+    grp_key = (struct nanGrpKey *)os_zalloc(sizeof(struct nanGrpKey));
+    if (!grp_key) {
+        ALOGE("%s: malloc failed", __FUNCTION__);
+        return;
+    }
+
+    if (NAN_CSIA_GRPKEY_LEN_GET(cipher_caps))
+        len = NAN_CSIA_GRPKEY_LEN_32;
+    else
+        len = NAN_CSIA_GRPKEY_LEN_16;
+
+    groupMfp = NAN_CSIA_GRPKEY_SUPPORT_GET(cipher_caps);
+
+    switch (groupMfp) {
+    case NAN_GTKSA_IGTKSA_SUPPORTED_BIGTKSA_NOT_SUPPORTED:
+        grp_key->igtk_len = len;
+        break;
+    case NAN_GTKSA_IGTKSA_BIGTKSA_SUPPORTED:
+        grp_key->igtk_len = len;
+        grp_key->bigtk_len = len;
+        break;
+    default:
+        goto fail;
+    }
+
+    if (grp_key->igtk_len && random_get_bytes(grp_key->igtk,
+                                              grp_key->igtk_len) < 0) {
+        ALOGE("%s: Get random IGTK Failed", __FUNCTION__);
+        goto fail;
+    }
+
+    if (grp_key->bigtk_len && random_get_bytes(grp_key->bigtk,
+                                               grp_key->bigtk_len) < 0) {
+        ALOGE("%s: Get random BIGTK Failed", __FUNCTION__);
+        goto fail;
+    }
+
+    wpa_hexdump(MSG_INFO, "PASN: IGTK ", grp_key->igtk, grp_key->igtk_len);
+    wpa_hexdump(MSG_INFO, "PASN: BIGTK ", grp_key->bigtk, grp_key->bigtk_len);
+
+    grp_key->igtk_life_time = GrpKeyLifetime;
+    grp_key->bigtk_life_time = GrpKeyLifetime;
+
+    if (secure_nan->dev_grp_keys)
+        os_free(secure_nan->dev_grp_keys);
+
+    ALOGD("NAN Group Key: Initializing");
+    secure_nan->dev_grp_keys = grp_key;
+    return;
+
+fail:
+    os_free(grp_key);
+    return;
+}
+
 void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
 {
     int ret;

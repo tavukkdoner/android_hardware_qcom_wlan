@@ -230,6 +230,7 @@ wifi_error nan_publish_request(transaction_id id,
     interface_info *ifaceInfo = getIfaceInfo(iface);
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
+    nanGrpKey *grp_keys = NULL;
 
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
@@ -245,6 +246,12 @@ wifi_error nan_publish_request(transaction_id id,
 
         info->secure_nan->supported_bootstrap =
               msg->nan_pairing_config.supported_bootstrapping_methods;
+#ifdef WPA_PASN_LIB
+        if (!info->secure_nan->dev_grp_keys)
+            nan_pairing_derive_grp_keys(info->secure_nan,
+                                        msg->cipher_capabilities);
+        grp_keys = info->secure_nan->dev_grp_keys;
+#endif
     }
 
     nan_set_nira_request(id, iface, msg->nan_identity_key);
@@ -269,7 +276,7 @@ wifi_error nan_publish_request(transaction_id id,
     if (ret != WIFI_SUCCESS)
         goto cleanup;
 
-    ret = nanCommand->putNanPublish(id, msg);
+    ret = nanCommand->putNanPublish(id, msg, grp_keys);
     if (ret != WIFI_SUCCESS) {
         ALOGE("%s: putNanPublish Error:%d",__FUNCTION__, ret);
         goto cleanup;
@@ -345,6 +352,7 @@ wifi_error nan_subscribe_request(transaction_id id,
     interface_info *ifaceInfo = getIfaceInfo(iface);
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
+    nanGrpKey *grp_keys = NULL;
 
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
@@ -360,6 +368,12 @@ wifi_error nan_subscribe_request(transaction_id id,
 
         info->secure_nan->supported_bootstrap =
               msg->nan_pairing_config.supported_bootstrapping_methods;
+#ifdef WPA_PASN_LIB
+        if (!info->secure_nan->dev_grp_keys)
+            nan_pairing_derive_grp_keys(info->secure_nan,
+                                        msg->cipher_capabilities);
+        grp_keys = info->secure_nan->dev_grp_keys;
+#endif
     }
 
     nan_set_nira_request(id, iface, msg->nan_identity_key);
@@ -384,7 +398,7 @@ wifi_error nan_subscribe_request(transaction_id id,
     if (ret != WIFI_SUCCESS)
         goto cleanup;
 
-    ret = nanCommand->putNanSubscribe(id, msg);
+    ret = nanCommand->putNanSubscribe(id, msg, grp_keys);
     if (ret != WIFI_SUCCESS) {
         ALOGE("%s: putNanSubscribe Error:%d", __FUNCTION__, ret);
         goto cleanup;

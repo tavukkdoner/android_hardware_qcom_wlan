@@ -114,6 +114,19 @@ extern "C"
 #define BIT_30              0x40000000
 #define BIT_31              0x80000000
 
+#define NAN_F_MS(_v, _f)                                            \
+            ( ((_v) & (_f)) >> (_f##_S) )
+
+#define NAN_CSIA_GRPKEY_SUPPORT_S 1
+#define NAN_CSIA_GRPKEY_SUPPORT (0x2 << NAN_CSIA_GRPKEY_SUPPORT_S)
+#define NAN_CSIA_GRPKEY_SUPPORT_GET(x) NAN_F_MS(x,NAN_CSIA_GRPKEY_SUPPORT)
+
+#define NAN_CSIA_GRPKEY_LEN_S 4
+#define NAN_CSIA_GRPKEY_LEN (0x1 << NAN_CSIA_GRPKEY_LEN_S)
+#define NAN_CSIA_GRPKEY_LEN_GET(x) NAN_F_MS(x,NAN_CSIA_GRPKEY_LEN)
+#define NAN_CSIA_GRPKEY_LEN_16   16
+#define NAN_CSIA_GRPKEY_LEN_32   32
+
 /** macro to convert FW MAC address from WMI word format to User Space MAC char array */
 #define FW_MAC_ADDR_TO_CHAR_ARRAY(fw_mac_addr, mac_addr) do { \
      (mac_addr)[0] =    ((fw_mac_addr).mac_addr31to0) & 0xff; \
@@ -1813,6 +1826,8 @@ int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
 int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
+void nan_pairing_derive_grp_keys(struct wpa_secure_nan *secure_nan,
+                                 u32 cipher_caps);
 
 #ifdef __cplusplus
 }

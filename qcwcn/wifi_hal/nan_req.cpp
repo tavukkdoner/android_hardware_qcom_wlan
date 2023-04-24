@@ -778,7 +778,8 @@ wifi_error NanCommand::putNanConfig(transaction_id id, const NanConfigRequest *p
     return ret;
 }
 
-wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest *pReq)
+wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest *pReq,
+                                     const nanGrpKey *grpKeys)
 {
     wifi_error ret;
     ALOGV("NAN_PUBLISH");
@@ -824,6 +825,18 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
               NAN_SECURITY_MAX_PASSPHRASE_LEN))
         message_len += SIZEOF_TLV_HDR +
                        pReq->key_info.body.passphrase_info.passphrase_len;
+
+    if (grpKeys) {
+        message_len += \
+        (
+           grpKeys->igtk_len ? (SIZEOF_TLV_HDR + \
+           NAN_IGTK_KDE_PREFIX_LEN + grpKeys->igtk_len) : 0 \
+        ) + \
+        (
+           grpKeys->bigtk_len ? (SIZEOF_TLV_HDR + \
+           NAN_BIGTK_KDE_PREFIX_LEN + grpKeys->bigtk_len) : 0 \
+        );
+    }
 
     pNanPublishServiceReqMsg pFwReq = (pNanPublishServiceReqMsg)malloc(message_len);
     if (pFwReq == NULL) {
@@ -1038,6 +1051,26 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
                         (const u8*)&caps, tlvs);
     }
 
+    if (grpKeys && grpKeys->igtk_len) {
+        u8 igtk_buf[MAX_IGTK_KDE_LEN] = {0};
+        struct igtkKDE *igtk_kde = (struct igtkKDE *)igtk_buf;
+        igtk_kde->keyid[0] = NAN_IGTK_KEY_IDX;
+        memcpy(igtk_kde->igtk, grpKeys->igtk, grpKeys->igtk_len);
+        tlvs = addTlv(NAN_TLV_TYPE_SEC_IGTK_KDE,
+                      NAN_IGTK_KDE_PREFIX_LEN + grpKeys->igtk_len,
+                      (const u8*)igtk_kde, tlvs);
+    }
+
+    if (grpKeys && grpKeys->bigtk_len) {
+        u8 bigtk_buf[MAX_BIGTK_KDE_LEN] = {0};
+        struct bigtkKDE *bigtk_kde = (struct bigtkKDE *)bigtk_buf;
+        bigtk_kde->keyid[0] = NAN_BIGTK_KEY_IDX;
+        memcpy(bigtk_kde->bigtk, grpKeys->bigtk, grpKeys->bigtk_len);
+        tlvs = addTlv(NAN_TLV_TYPE_SEC_BIGTK_KDE,
+                      NAN_BIGTK_KDE_PREFIX_LEN + grpKeys->bigtk_len,
+                      (const u8*)bigtk_kde, tlvs);
+    }
+
     mVendorData = (char *)pFwReq;
     mDataLen = message_len;
 
@@ -1127,7 +1160,8 @@ wifi_error NanCommand::putNanPublishCancel(transaction_id id, const NanPublishCa
 }
 
 wifi_error NanCommand::putNanSubscribe(transaction_id id,
-                                const NanSubscribeRequest *pReq)
+                                const NanSubscribeRequest *pReq,
+                                const nanGrpKey *grpKeys)
 {
     wifi_error ret;
 
@@ -1177,6 +1211,17 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
         message_len += SIZEOF_TLV_HDR +
                        pReq->key_info.body.passphrase_info.passphrase_len;
 
+    if (grpKeys) {
+        message_len += \
+        (
+           grpKeys->igtk_len ? (SIZEOF_TLV_HDR + \
+           NAN_IGTK_KDE_PREFIX_LEN + grpKeys->igtk_len) : 0 \
+        ) + \
+        (
+           grpKeys->bigtk_len ? (SIZEOF_TLV_HDR + \
+           NAN_BIGTK_KDE_PREFIX_LEN + grpKeys->bigtk_len) : 0 \
+        );
+    }
 
     pNanSubscribeServiceReqMsg pFwReq = (pNanSubscribeServiceReqMsg)malloc(message_len);
     if (pFwReq == NULL) {
@@ -1384,6 +1429,26 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
         ALOGI("%s: cipher capabilities :%d",__func__, caps);
         tlvs = addTlv(NAN_TLV_TYPE_DEV_CAP_ATTR_CAPABILITY, sizeof(u8),
                           (const u8*)&caps, tlvs);
+    }
+
+    if (grpKeys && grpKeys->igtk_len) {
+        u8 igtk_buf[MAX_IGTK_KDE_LEN] = {0};
+        struct igtkKDE *igtk_kde = (struct igtkKDE *)igtk_buf;
+        igtk_kde->keyid[0] = NAN_IGTK_KEY_IDX;
+        memcpy(igtk_kde->igtk, grpKeys->igtk, grpKeys->igtk_len);
+        tlvs = addTlv(NAN_TLV_TYPE_SEC_IGTK_KDE,
+                      NAN_IGTK_KDE_PREFIX_LEN + grpKeys->igtk_len,
+                      (const u8*)igtk_kde, tlvs);
+    }
+
+    if (grpKeys && grpKeys->bigtk_len) {
+        u8 bigtk_buf[MAX_BIGTK_KDE_LEN] = {0};
+        struct bigtkKDE *bigtk_kde = (struct bigtkKDE *)bigtk_buf;
+        bigtk_kde->keyid[0] = NAN_BIGTK_KEY_IDX;
+        memcpy(bigtk_kde->bigtk, grpKeys->bigtk, grpKeys->bigtk_len);
+        tlvs = addTlv(NAN_TLV_TYPE_SEC_BIGTK_KDE,
+                      NAN_BIGTK_KDE_PREFIX_LEN + grpKeys->bigtk_len,
+                      (const u8*)bigtk_kde, tlvs);
     }
 
     mVendorData = (char *)pFwReq;

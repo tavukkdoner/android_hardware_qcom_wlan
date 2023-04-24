@@ -205,9 +205,11 @@ public:
     //Functions to fill the vendor data appropriately
     wifi_error putNanEnable(transaction_id id, const NanEnableRequest *pReq);
     wifi_error putNanDisable(transaction_id id);
-    wifi_error putNanPublish(transaction_id id, const NanPublishRequest *pReq);
+    wifi_error putNanPublish(transaction_id id, const NanPublishRequest *pReq,
+                             const nanGrpKey *grp_keys);
     wifi_error putNanPublishCancel(transaction_id id, const NanPublishCancelRequest *pReq);
-    wifi_error putNanSubscribe(transaction_id id, const NanSubscribeRequest *pReq);
+    wifi_error putNanSubscribe(transaction_id id, const NanSubscribeRequest *pReq,
+                               const nanGrpKey *grp_keys);
     wifi_error putNanSubscribeCancel(transaction_id id, const NanSubscribeCancelRequest *pReq);
     wifi_error putNanTransmitFollowup(transaction_id id,
                                       const NanTransmitFollowupRequest *pReq,
