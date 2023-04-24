@@ -199,6 +199,10 @@ wifi_error NanCommand::putNanEnable(transaction_id id, const NanEnableRequest *p
         (
            pReq->config_dw_early_termination ? (SIZEOF_TLV_HDR + \
            sizeof(u32)) : 0 \
+        ) + \
+        (
+          pReq->config_unsync_srvdsc? (SIZEOF_TLV_HDR + \
+          sizeof(pReq->enable_unsync_srvdsc)) : 0 \
         );
 
     pNanEnableReqMsg pFwReq = (pNanEnableReqMsg)malloc(message_len);
@@ -385,6 +389,12 @@ wifi_error NanCommand::putNanEnable(transaction_id id, const NanEnableRequest *p
     if (pReq->config_dw_early_termination) {
         tlvs = addTlv(NAN_TLV_TYPE_DW_EARLY_TERMINATION, sizeof(u32),
                       (const u8*)&pReq->enable_dw_termination, tlvs);
+    }
+    if (pReq->config_unsync_srvdsc) {
+        ALOGV("%s: enable unsync dsc:%d",__func__, pReq->enable_unsync_srvdsc);
+        tlvs = addTlv(NAN_TLV_TYPE_UNSYNC_DISCOVERY_ENABLED,
+                      sizeof(pReq->enable_unsync_srvdsc),
+                      (const u8*)&pReq->enable_unsync_srvdsc, tlvs);
     }
 
     mVendorData = (char*)pFwReq;
@@ -787,7 +797,8 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
         (pReq->cipher_type ? SIZEOF_TLV_HDR + sizeof(NanCsidType) : 0) +
         ((pReq->sdea_params.config_nan_data_path || pReq->sdea_params.security_cfg ||
           pReq->sdea_params.ranging_state || pReq->sdea_params.range_report ||
-          pReq->sdea_params.qos_cfg) ?
+          pReq->sdea_params.qos_cfg || pReq->sdea_params.config_fsd_gas ||
+          pReq->sdea_params.config_fsd_req || pReq->sdea_params.gtk_protection) ?
           SIZEOF_TLV_HDR + sizeof(NanFWSdeaCtrlParams) : 0) +
         ((pReq->ranging_cfg.ranging_interval_msec || pReq->ranging_cfg.config_ranging_indications ||
           pReq->ranging_cfg.distance_ingress_mm || pReq->ranging_cfg.distance_egress_mm) ?
@@ -799,7 +810,9 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
           pReq->nan_pairing_config.enable_pairing_cache ||
           pReq->nan_pairing_config.supported_bootstrapping_methods) ?
           SIZEOF_TLV_HDR + sizeof(NanFWPairingConfigParams) : 0)  +
-        (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0);
+        (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0) +
+         (pReq->s3_capabilities ? SIZEOF_TLV_HDR + sizeof(u32) : 0) +
+         (pReq->cipher_capabilities ? SIZEOF_TLV_HDR + sizeof(u8) : 0);
 
     if ((pReq->key_info.key_type ==  NAN_SECURITY_KEY_INPUT_PMK) &&
         (pReq->key_info.body.pmk_info.pmk_len == NAN_PMK_INFO_LEN))
@@ -899,7 +912,10 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
         pReq->sdea_params.security_cfg ||
         pReq->sdea_params.ranging_state ||
         pReq->sdea_params.range_report ||
-        pReq->sdea_params.qos_cfg) {
+        pReq->sdea_params.qos_cfg ||
+        pReq->sdea_params.config_fsd_gas ||
+        pReq->sdea_params.config_fsd_req ||
+        pReq->sdea_params.gtk_protection) {
         NanFWSdeaCtrlParams pNanFWSdeaCtrlParams;
         memset(&pNanFWSdeaCtrlParams, 0, sizeof(NanFWSdeaCtrlParams));
 
@@ -925,6 +941,18 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
         }
         if (pReq->sdea_params.qos_cfg) {
             pNanFWSdeaCtrlParams.qos_required = pReq->sdea_params.qos_cfg;
+        }
+        if (pReq->sdea_params.config_fsd_gas) {
+            pNanFWSdeaCtrlParams.fsd_with_gas = pReq->sdea_params.enable_fsd_gas;
+            ALOGV("fsd_with_gas :%d", pNanFWSdeaCtrlParams.fsd_with_gas);
+        }
+        if (pReq->sdea_params.config_fsd_req) {
+            pNanFWSdeaCtrlParams.fsd_required =  pReq->sdea_params.enable_fsd_req;
+            ALOGV("fsd_required :%d", pNanFWSdeaCtrlParams.fsd_required);
+        }
+        if (pReq->sdea_params.gtk_protection) {
+            pNanFWSdeaCtrlParams.gtk_protection = 1;
+            ALOGV("gtk_protection :%d", pNanFWSdeaCtrlParams.gtk_protection);
         }
         tlvs = addTlv(NAN_TLV_TYPE_SDEA_CTRL_PARAMS, sizeof(NanFWSdeaCtrlParams),
                         (const u8*)&pNanFWSdeaCtrlParams, tlvs);
@@ -989,6 +1017,19 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
             ((pReq->range_response_cfg.ranging_response == NAN_RANGE_REQUEST_CANCEL) ? 1 : 0);
         tlvs = addTlv(NAN_TLV_TYPE_NAN20_RANGING_REQUEST, sizeof(NanFWRangeReqMsg),
                                                     (const u8*)&pNanFWRangeReqMsg, tlvs);
+    }
+
+    if (pReq->s3_capabilities) {
+        u32 caps = BIT(4);
+        tlvs = addTlv(NAN_TLV_TYPE_DEV_CAP_ATTR_CAPABILITY, sizeof(u32),
+                      (const u8*)&caps, tlvs);
+    }
+
+    if (pReq->cipher_capabilities) {
+        u8 caps = (pReq->cipher_capabilities & 0x3) << 1;
+        ALOGV("%s: cipher capabilities :%d",__func__, caps);
+          tlvs = addTlv(NAN_TLV_TYPE_DEV_CAP_ATTR_CAPABILITY, sizeof(u8),
+                        (const u8*)&caps, tlvs);
     }
 
     mVendorData = (char *)pFwReq;
@@ -1099,7 +1140,8 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
         (pReq->cipher_type ? SIZEOF_TLV_HDR + sizeof(NanCsidType) : 0) +
         ((pReq->sdea_params.config_nan_data_path || pReq->sdea_params.security_cfg ||
           pReq->sdea_params.ranging_state || pReq->sdea_params.range_report ||
-          pReq->sdea_params.qos_cfg) ?
+          pReq->sdea_params.qos_cfg || pReq->sdea_params.config_fsd_gas ||
+          pReq->sdea_params.config_fsd_req || pReq->sdea_params.gtk_protection) ?
           SIZEOF_TLV_HDR + sizeof(NanFWSdeaCtrlParams) : 0) +
         ((pReq->ranging_cfg.ranging_interval_msec || pReq->ranging_cfg.config_ranging_indications ||
           pReq->ranging_cfg.distance_ingress_mm || pReq->ranging_cfg.distance_egress_mm) ?
@@ -1111,7 +1153,8 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
           pReq->nan_pairing_config.enable_pairing_cache ||
           pReq->nan_pairing_config.supported_bootstrapping_methods) ?
           SIZEOF_TLV_HDR + sizeof(NanFWPairingConfigParams) : 0)  +
-        (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0);
+        (pReq->sdea_service_specific_info_len ? SIZEOF_TLV_HDR + pReq->sdea_service_specific_info_len : 0) +
+        (pReq->cipher_capabilities ? SIZEOF_TLV_HDR + sizeof(u8) : 0);
 
     message_len += \
         (pReq->num_intf_addr_present * (SIZEOF_TLV_HDR + NAN_MAC_ADDR_LEN));
@@ -1219,7 +1262,10 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
         pReq->sdea_params.security_cfg ||
         pReq->sdea_params.ranging_state ||
         pReq->sdea_params.range_report ||
-        pReq->sdea_params.qos_cfg) {
+        pReq->sdea_params.qos_cfg ||
+        pReq->sdea_params.config_fsd_gas ||
+        pReq->sdea_params.config_fsd_req ||
+        pReq->sdea_params.gtk_protection) {
         NanFWSdeaCtrlParams pNanFWSdeaCtrlParams;
         memset(&pNanFWSdeaCtrlParams, 0, sizeof(NanFWSdeaCtrlParams));
 
@@ -1245,6 +1291,18 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
         }
         if (pReq->sdea_params.qos_cfg) {
             pNanFWSdeaCtrlParams.qos_required = pReq->sdea_params.qos_cfg;
+        }
+        if (pReq->sdea_params.config_fsd_gas) {
+            pNanFWSdeaCtrlParams.fsd_with_gas = pReq->sdea_params.enable_fsd_gas;
+            ALOGI("%s: fsd_with_gas :%d",__func__, pNanFWSdeaCtrlParams.fsd_with_gas);
+        }
+        if (pReq->sdea_params.config_fsd_req) {
+            pNanFWSdeaCtrlParams.fsd_required =  pReq->sdea_params.enable_fsd_req;
+            ALOGI("%s: fsd_required :%d",__func__, pNanFWSdeaCtrlParams.fsd_required);
+        }
+        if (pReq->sdea_params.gtk_protection) {
+            pNanFWSdeaCtrlParams.gtk_protection = 1;
+            ALOGI("%s: gtk_protection :%d",__func__, pNanFWSdeaCtrlParams.gtk_protection);
         }
         tlvs = addTlv(NAN_TLV_TYPE_SDEA_CTRL_PARAMS, sizeof(NanFWSdeaCtrlParams),
                         (const u8*)&pNanFWSdeaCtrlParams, tlvs);
@@ -1307,6 +1365,13 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
             ((pReq->range_response_cfg.ranging_response == NAN_RANGE_REQUEST_CANCEL) ? 1 : 0);
         tlvs = addTlv(NAN_TLV_TYPE_NAN20_RANGING_REQUEST, sizeof(NanFWRangeReqMsg),
                                                     (const u8*)&pNanFWRangeReqMsg, tlvs);
+    }
+
+    if (pReq->cipher_capabilities) {
+        u8 caps = (pReq->cipher_capabilities & 0x3) << 1;
+        ALOGI("%s: cipher capabilities :%d",__func__, caps);
+        tlvs = addTlv(NAN_TLV_TYPE_DEV_CAP_ATTR_CAPABILITY, sizeof(u8),
+                          (const u8*)&caps, tlvs);
     }
 
     mVendorData = (char *)pFwReq;
