@@ -998,6 +998,12 @@ int NanCommand::handleNdpResponse(NanResponseType ndpCmdType,
         rsp_data.body.data_request_response.ndp_instance_id =
         nla_get_u32(tb_vendor[QCA_WLAN_VENDOR_ATTR_NDP_INSTANCE_ID]);
     }
+
+    // transaction id will be zero for NL80211_CMD_DEL_INTERFACE.
+    // get transaction id from wifihal nan instance.
+    if (!id && ndpCmdType == NAN_DP_INTERFACE_DELETE)
+        id = mNanCommandInstance->getTransactionId();
+
     //Call the NotifyResponse Handler
     if (mHandler.NotifyResponse) {
         (*mHandler.NotifyResponse)(id, &rsp_data);
