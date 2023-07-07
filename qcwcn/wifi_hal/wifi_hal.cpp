@@ -3803,7 +3803,7 @@ cleanup:
     return ret;
 }
 
-#define SIZEOF_TLV_HDR 4
+#define SIZEOF_TLV_HEADER 4
 #define OEM_DATA_TLV_TYPE_HEADER 1
 #define OEM_DATA_CMD_SET_SKIP_CAC   18
 
@@ -3818,7 +3818,7 @@ static int wifi_add_oem_data_head(int cmd_id, u8* oem_buf, size_t max)
     oem_hdr.cmd_id = cmd_id;
     oem_hdr.request_idx = 0;
 
-    if ((SIZEOF_TLV_HDR + sizeof(oem_hdr)) > max) {
+    if ((SIZEOF_TLV_HEADER + sizeof(oem_hdr)) > max) {
         return 0;
     }
 
@@ -3829,7 +3829,7 @@ static int wifi_add_oem_data_head(int cmd_id, u8* oem_buf, size_t max)
     memcpy(oem_buf, (u8 *)&oem_hdr, sizeof(oem_hdr));
     oem_buf += sizeof(oem_hdr);
 
-    return (SIZEOF_TLV_HDR + sizeof(oem_hdr));
+    return (SIZEOF_TLV_HEADER + sizeof(oem_hdr));
 }
 
 
