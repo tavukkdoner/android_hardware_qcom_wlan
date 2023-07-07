@@ -1612,6 +1612,7 @@ NanCommand::NanCommand(wifi_handle handle, int id, u32 vendor_id, u32 subcmd)
     mNanDataLen = 0;
     mStaParam = NULL;
     memset(mNmiMac, 0, sizeof(mNmiMac));
+    memset(mClusterAddr, 0, sizeof(mClusterAddr));
     mStorePubParams = NULL;
     mStoreSubParams = NULL;
     mNanMaxPublishes = 0;
@@ -1679,10 +1680,22 @@ void NanCommand::saveNmi(u8 *mac)
     memcpy(mNmiMac, mac, NAN_MAC_ADDR_LEN);
 }
 
+/* Save NAN Cluster address */
+void NanCommand::saveClusterAddr(u8 *mac)
+{
+    memcpy(mClusterAddr, mac, NAN_MAC_ADDR_LEN);
+}
+
 /* Get NAN Management Interface address */
 u8 *NanCommand::getNmi()
 {
     return mNmiMac;
+}
+
+/* Get NAN Cluster address */
+u8 *NanCommand::getClusterAddr()
+{
+    return mClusterAddr;
 }
 
 /*

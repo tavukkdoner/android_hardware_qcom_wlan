@@ -123,6 +123,11 @@ int NanCommand::handleNanIndication()
          * framework has disabled the self MAC address indication.
          */
         if (!res &&
+            ((discEngEventInd.event_type == NAN_EVENT_ID_STARTED_CLUSTER) ||
+            (discEngEventInd.event_type == NAN_EVENT_ID_JOINED_CLUSTER))) {
+            mNanCommandInstance->saveClusterAddr(discEngEventInd.data.cluster.addr);
+        }
+        if (!res &&
             (discEngEventInd.event_type == NAN_EVENT_ID_DISC_MAC_ADDR)) {
             mNanCommandInstance->saveNmi(discEngEventInd.data.mac_addr.addr);
             if (mNanCommandInstance->mNanDiscAddrIndDisabled)
