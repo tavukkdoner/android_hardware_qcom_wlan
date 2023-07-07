@@ -27,7 +27,7 @@
  */
 
 #include <stdlib.h>
-#include "list.h"
+#include "wifihal_list.h"
 
 void INITIALISE_LIST(struct list_head *list)
 {

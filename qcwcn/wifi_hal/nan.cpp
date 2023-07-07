@@ -50,6 +50,7 @@
 
 #include "sync.h"
 
+#include "wifihal_list.h"
 #include "wifi_hal.h"
 #include "nan_i.h"
 #include "common.h"
@@ -973,6 +974,7 @@ wifi_error nan_data_interface_delete(transaction_id id,
     wifi_error ret;
     struct nlattr *nlData;
     NanCommand *nanCommand = NULL;
+    NanCommand *t_nanCommand = NULL;
     WiFiConfigCommand *wifiConfigCommand;
     wifi_handle handle = getWifiHandle(iface);
     hal_info *info = getHalInfo(handle);
@@ -988,6 +990,10 @@ wifi_error nan_data_interface_delete(transaction_id id,
         return WIFI_ERROR_UNKNOWN;
     }
 
+    t_nanCommand = NanCommand::instance(handle);
+    if (t_nanCommand == NULL)
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+
     // NL80211_CMD_DEL_INTERFACE internally takes care of NDP cleanup.
     if ((check_feature(QCA_WLAN_VENDOR_FEATURE_USE_ADD_DEL_VIRTUAL_INTF_FOR_NDI,
                        &info->driver_supported_features)) &&
@@ -1001,6 +1007,10 @@ wifi_error nan_data_interface_delete(transaction_id id,
         wifiConfigCommand->create_generic(NL80211_CMD_DEL_INTERFACE);
         wifiConfigCommand->put_u32(NL80211_ATTR_IFINDEX,
                                    if_nametoindex(iface_name));
+
+        if (t_nanCommand != NULL)
+            t_nanCommand->saveTransactionId(id);
+
         /* Send the NL msg. */
         wifiConfigCommand->waitForRsp(false);
         if (wifiConfigCommand->requestEvent() != WIFI_SUCCESS) {
@@ -1929,6 +1939,25 @@ void NanCommand::deallocSvcParams()
         mStoreSubParams = NULL;
         ALOGV("%s: Deallocated Subscribe pool", __FUNCTION__);
     }
+}
+
+/* Save NAN transaction ID for ndi delete command */
+void NanCommand::saveTransactionId(transaction_id id)
+{
+    mNdiTransactionId.push(id);
+}
+
+/* Get NAN transaction ID for ndi delete command */
+transaction_id NanCommand::getTransactionId()
+{
+    transaction_id id = 0;
+
+    if (!mNdiTransactionId.empty()) {
+        id = mNdiTransactionId.front();
+        mNdiTransactionId.pop();
+        ALOGV("%s: id =%d", __FUNCTION__, id);
+    }
+    return id;
 }
 
 wifi_error NanCommand::setCallbackHandler(NanCallbackHandler nHandler)

@@ -35,7 +35,7 @@
  */
 
 #include "wifi_hal.h"
-#include "list.h"
+#include "wifihal_list.h"
 #include "sys/un.h"
 
 #define WIFIHAL_LOWI_MAJOR_VERSION      2

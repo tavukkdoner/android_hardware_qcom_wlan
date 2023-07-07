@@ -55,6 +55,7 @@
 #include "cpp_bindings.h"
 #include "wifi_hal.h"
 #include "nan_cert.h"
+#include <queue>
 
 /*
  * NAN Salt is a concatenation of salt_version, CSID, Service ID, PeerMac
@@ -106,6 +107,7 @@ private:
     NanStoreSvcParams *mStorePubParams;
     NanStoreSvcParams *mStoreSubParams;
     bool mNanDiscAddrIndDisabled;
+    std::queue<transaction_id> mNdiTransactionId;
 
     //Function to check the initial few bytes of data to
     //determine whether NanResponse or NanEvent
@@ -232,6 +234,8 @@ public:
     void allocSvcParams();
     void reallocSvcParams(NanRole pool);
     void deallocSvcParams();
+    void saveTransactionId(transaction_id id);
+    transaction_id getTransactionId();
 };
 #endif /* __WIFI_HAL_NAN_COMMAND_H__ */
 
