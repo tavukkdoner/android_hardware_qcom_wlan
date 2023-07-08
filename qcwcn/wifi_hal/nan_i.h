@@ -176,6 +176,9 @@ typedef enum
     NAN_MSG_ID_SELF_TRANSMIT_FOLLOWUP_IND   = 35,
     NAN_MSG_ID_RANGING_REQUEST_RECEVD_IND   = 36,
     NAN_MSG_ID_RANGING_RESULT_IND           = 37,
+    NAN_MSG_ID_IDENTITY_RESOLUTION_IND      = 38,
+    NAN_MSG_ID_PAIRING_IND                  = 39,
+    NAN_MSG_ID_UNPAIRING_IND                = 40,
     NAN_MSG_ID_TESTMODE_REQ                 = 1025,
     NAN_MSG_ID_TESTMODE_RSP                 = 1026
 } NanMsgId;
@@ -222,6 +225,14 @@ typedef enum
     NAN_TLV_TYPE_DEV_CAP_ATTR_CAPABILITY = 29,
     NAN_TLV_TYPE_IP_TRANSPORT_PARAM = 30,
     NAN_TLV_TYPE_SERVICE_ID = 31,
+    NAN_TLV_TYPE_PAIRING_CONFIGURATION = 32,
+    NAN_TLV_TYPE_PAIRING_MATCH_PARAMS = 33,
+    NAN_TLV_TYPE_BOOTSTRAPPING_PARAMS = 34,
+    NAN_TLV_TYPE_BOOTSTRAPPING_COOKIE = 35,
+    NAN_TLV_TYPE_NIRA_NONCE  = 36,
+    NAN_TLV_TYPE_NIRA_TAG = 37,
+    NAN_TLV_TYPE_NAN_CSID_EXT = 38,
+    NAN_TLV_TYPE_CSIA_CAP = 39,
     NAN_TLV_TYPE_SDF_LAST = 4095,
 
     /* Configuration types */
@@ -268,6 +279,8 @@ typedef enum
     NAN_TLV_TYPE_DW_EARLY_TERMINATION = 4136,
     NAN_TLV_TYPE_TX_RX_CHAINS = 4137,
     NAN_TLV_TYPE_ENABLE_DEVICE_RANGING = 4138,
+    NAN_TLV_TYPE_UNSYNC_DISCOVERY_ENABLED = 4139,
+
     NAN_TLV_TYPE_CONFIG_LAST = 8191,
 
     /* Attributes types */
@@ -278,6 +291,7 @@ typedef enum
     NAN_TLV_TYPE_RECEIVED_RSSI_VALUE,
     NAN_TLV_TYPE_CLUSTER_ATTRIBUTE,
     NAN_TLV_TYPE_WLAN_INFRA_SSID,
+    NAN_TLV_TYPE_NAN_SHARED_KEY_DESC_ATTR,
     NAN_TLV_TYPE_ATTRS_LAST = 12287,
 
     /* Events Type */
@@ -309,6 +323,13 @@ typedef enum
     NAN_TLV_TYPE_TESTMODE_FIRST = 36864,
     NAN_TLV_TYPE_TESTMODE_GENERIC_CMD = NAN_TLV_TYPE_TESTMODE_FIRST,
     NAN_TLV_TYPE_TESTMODE_LAST = 37000,
+
+    /* NAN Security types */
+    NAN_TLV_TYPE_SEC_FIRST = 37001,
+    NAN_TLV_TYPE_SEC_IGTK_KDE = NAN_TLV_TYPE_SEC_FIRST,
+    NAN_TLV_TYPE_SEC_BIGTK_KDE,
+    NAN_TLV_TYPE_SEC_NM_TK,
+    NAN_TLV_TYPE_SEC_LAST = 37100,
 
     NAN_TLV_TYPE_LAST = 65535
 } NanTlvType;
@@ -1137,6 +1158,7 @@ typedef enum {
     NAN_INDICATION_SELF_TRANSMIT_FOLLOWUP  =10,
     NAN_INDICATION_RANGING_REQUEST_RECEIVED =11,
     NAN_INDICATION_RANGING_RESULT           =12,
+    NAN_INDICATION_IDENTITY_RESOLUTION      =13,
     NAN_INDICATION_UNKNOWN                 =0xFFFF
 } NanIndicationType;
 
@@ -1171,11 +1193,17 @@ typedef struct PACKED
     u32 max_scid_len;
     u32 is_ndp_security_supported:1;
     u32 max_sdea_service_specific_info_len:16;
-    u32 reserved1:5;
-    u32 reserved2:5;
+    u32 max_nan_rtt_initiator_supported:5;
+    u32 max_nan_rtt_responder_supported:5;
     u32 ndpe_attr_supported:1;
-    u32 reserved:4;
+    u32 nan_pairing_supported:1;
+    u32 nan_usd_publisher_supported:1;
+    u32 nan_usd_subscriber_supported:1;
+    u32 reserved:1;
     u32 max_subscribe_address;
+    u32 max_nan_pairing_sessions;
+    u32 nan_group_mfp_cap;
+
 } NanCapabilitiesRspMsg, *pNanCapabilitiesRspMsg;
 
 /* NAN Self Transmit Followup */
@@ -1184,6 +1212,11 @@ typedef struct PACKED
     NanMsgHeader fwHeader;
     u32 reason;
 } NanSelfTransmitFollowupIndMsg, *pNanSelfTransmitFollowupIndMsg;
+
+/* NAN Group MFP support */
+#define NAN_GTKSA_IGTKSA_BIGTKSA_NOT_SUPPORTED             0x00
+#define NAN_GTKSA_IGTKSA_SUPPORTED_BIGTKSA_NOT_SUPPORTED   0x01
+#define NAN_GTKSA_IGTKSA_BIGTKSA_SUPPORTED                 0x02
 
 /* NAN Cipher Suite Shared Key */
 typedef struct PACKED
@@ -1204,7 +1237,8 @@ typedef struct PACKED
     u32 ranging_required:1;
     u32 range_limit_present:1;
     u32 service_update_ind_present:1;
-    u32 reserved1:6;
+    u32 gtk_protection:1;
+    u32 reserved1:5;
     u32 range_report:1;
     u32 reserved2:15;
 } NanFWSdeaCtrlParams;
@@ -1223,6 +1257,90 @@ typedef struct PACKED
     u32 ranging_indication_event;
     NanFWGeoFenceDescriptor geo_fence_threshold;
 } NanFWRangeConfigParams;
+
+typedef struct PACKED
+{
+    u32 pairing_setup_required:1;
+    u32 npk_nik_caching_required:1;
+    u32 bootstrapping_method_bitmap:16;
+    u32 reserved:14;
+} NanFWPairingConfigParams;
+
+typedef struct PACKED
+{
+    u32 pairing_setup_required:1;
+    u32 npk_nik_caching_required:1;
+    u32 bootstrapping_method_bitmap:16;
+    u32 reserved:14;
+} NanFWPairingParamsMatch;
+
+typedef enum {
+    NAN_BS_TYPE_ADVERTISE = 0,
+    NAN_BS_TYPE_REQUEST,
+    NAN_BS_TYPE_RESPONSE,
+} NanBootstrappingType;
+
+typedef enum {
+    NAN_BS_STATUS_ACCEPT = 0,
+    NAN_BS_STATUS_REJECT,
+    NAN_BS_STATUS_COMEBACK,
+} NanBootstrappingStatus;
+
+typedef struct PACKED
+{
+    u8 type;
+    u8 status;
+    u8 dialog_token;
+    u8 reason_code;
+    u16 bootstrapping_method_bitmap;
+    u16 comeback_after;
+} NanFWBootstrappingParams;
+
+/* NAN Identity Resolution Params */
+typedef struct PACKED
+{
+    u32 cipher_version:8;
+    u32 reserved:24;
+} NanFWIdentityResolutionParams;
+
+
+typedef struct PACKED
+{
+    NanMsgHeader fwHeader;
+    NanFWIdentityResolutionParams identityresolutionParams;
+    /*
+     * Excludes TLVs
+     *
+     * Required: Nounce, Tag
+     */
+    u8 ptlv[];
+} NanFWIdentityResolutionReqMsg, *pNanFWIdentityResolutionReqMsg;
+
+/* NAN Pairing Request Params */
+typedef struct PACKED
+{
+    u32 pairing_handle;
+    u32 pairing_verification;
+    u32 cipher_suite;
+} NanFWPairingIndParams;
+
+typedef struct PACKED
+{
+    NanMsgHeader               fwHeader;
+    NanFWPairingIndParams      pairingIndParams;
+    /* TLVs Required:
+       MANDATORY
+       1. MAC_ADDRESS (Peer NMI)
+       2. NM_TK (The TK derived from pairing)
+    */
+    u8 ptlv[];
+} NanFWPairingIndMsg, *pNanFWPairingIndMsg;
+
+typedef struct PACKED
+{
+    NanMsgHeader               fwHeader;
+    u32                        pairing_handle;
+} NanFWUnPairingIndMsg, *pFWNanUnPairingIndMsg;
 
 typedef struct PACKED
 {
