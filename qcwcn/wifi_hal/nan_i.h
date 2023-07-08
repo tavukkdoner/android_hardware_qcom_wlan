@@ -1479,6 +1479,8 @@ nan_pairing_get_peer_from_id(struct wpa_secure_nan *secure_nan, u32 pairing_id);
 void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan);
 void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
                                        u8 *mac);
+int nan_send_tx_mgmt(void *ctx, const u8 *frame_buf, size_t frame_len,
+                     int noack, unsigned int freq, unsigned int wait_dur);
 
 #ifdef __cplusplus
 }
