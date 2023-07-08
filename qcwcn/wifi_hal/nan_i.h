@@ -1325,6 +1325,8 @@ typedef struct PACKED
     u8 ptlv[1];
 } NanFWRangeReqRecvdInd, *pNanFWRangeReqRecvdInd;
 
+#define NIR_STR_LEN 3
+
 /* Enumeration for NAN device current role */
 enum secure_nan_role {
     SECURE_NAN_IDLE = 0,
@@ -1462,6 +1464,8 @@ void NanErrorTranslation(NanInternalStatusType firmwareErrorRecvd,
 /* nan pairing internal function prototypes */
 int secure_nan_init(wifi_interface_handle iface);
 int secure_nan_deinit(hal_info *info);
+void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan);
+unsigned int nan_pairing_get_nik_lifetime(struct nanIDkey *nik);
 
 #ifdef __cplusplus
 }
