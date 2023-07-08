@@ -19,6 +19,109 @@ static const int NIKLifetime = 43200;
 /* NAN group key lifetime in seconds */
 static const int GrpKeyLifetime = 43200;
 
+struct nan_pairing_peer_info*
+nan_pairing_add_peer_to_list(struct wpa_secure_nan *secure_nan, u8 *mac)
+{
+    struct nan_pairing_peer_info *entry, *mentry = NULL;
+
+    list_for_each_entry(entry, &secure_nan->peers, list) {
+
+       if (memcmp(entry->bssid, mac, ETH_ALEN) == 0) {
+           if (entry->is_paired) {
+               ALOGV(" %s :Peer already paired: ADDR=" MACSTR,
+                     __FUNCTION__, MAC2STR(mac));
+           } else {
+               ALOGV(" %s :Add peer req for existing peer: ADDR=" MACSTR,
+                     __FUNCTION__, MAC2STR(mac));
+           }
+           entry->pairing_instance_id = secure_nan->pairing_id++;
+           wpa_pasn_reset(&entry->pasn);
+           return entry;
+       }
+    }
+
+    mentry = (struct nan_pairing_peer_info *)malloc(sizeof(*entry));
+    if (!mentry) {
+        ALOGE("%s: peer entry malloc failed", __FUNCTION__);
+        return NULL;
+    }
+
+    memset((char *)mentry, 0, sizeof(*entry));
+    memcpy(mentry->bssid, mac, ETH_ALEN);
+    mentry->pairing_instance_id = secure_nan->pairing_id++;
+
+    mentry->pasn.cb_ctx = secure_nan->cb_ctx;
+    wpa_pasn_reset(&mentry->pasn);
+    add_to_list(&mentry->list, &secure_nan->peers);
+    return mentry;
+}
+
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_list(struct wpa_secure_nan *secure_nan, u8 *mac)
+{
+    struct nan_pairing_peer_info *entry;
+
+    list_for_each_entry(entry, &secure_nan->peers, list) {
+       if (memcmp(entry->bssid, mac, ETH_ALEN) == 0)
+                  return entry;
+    }
+    return NULL;
+}
+
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_id(struct wpa_secure_nan *secure_nan, u32 pairing_id)
+{
+    struct nan_pairing_peer_info *entry;
+
+    list_for_each_entry(entry, &secure_nan->peers, list) {
+       if (entry->pairing_instance_id == pairing_id)
+           return entry;
+    }
+    return NULL;
+}
+
+void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan)
+{
+    struct nan_pairing_peer_info *entry, *tmp;
+
+    list_for_each_entry_safe(entry, tmp, &secure_nan->peers, list) {
+         del_from_list(&entry->list);
+
+         if (entry->pasn.extra_ies)
+             free((u8 *)entry->pasn.extra_ies);
+
+         wpa_pasn_reset(&entry->pasn);
+
+         if (entry->frame)
+             free(entry->frame);
+
+         free(entry);
+    }
+}
+
+void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
+                                       u8 *mac)
+{
+    struct nan_pairing_peer_info *entry, *tmp;
+
+    list_for_each_entry_safe(entry, tmp, &secure_nan->peers, list) {
+       if (memcmp(entry->bssid, mac, ETH_ALEN) == 0) {
+                 del_from_list(&entry->list);
+
+                 if (entry->pasn.extra_ies)
+                     free((u8 *)entry->pasn.extra_ies);
+
+                 wpa_pasn_reset(&entry->pasn);
+
+                 if (entry->frame)
+                     free(entry->frame);
+
+                 free(entry);
+                 return;
+       }
+    }
+}
+
 void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
 {
     int ret;
@@ -154,6 +257,7 @@ int secure_nan_deinit(hal_info *info)
 
     nan_pairing_initiator_pmksa_cache_deinit(info->secure_nan->initiator_pmksa);
     nan_pairing_responder_pmksa_cache_deinit(info->secure_nan->responder_pmksa);
+    nan_pairing_delete_list(info->secure_nan);
 
     os_free(info->secure_nan);
     info->secure_nan = NULL;
@@ -161,6 +265,35 @@ int secure_nan_deinit(hal_info *info)
 }
 
 #else  /* WPA_PASN_LIB */
+
+struct nan_pairing_peer_info*
+nan_pairing_add_peer_to_list(struct wpa_secure_nan *secure_nan, u8 *mac)
+{
+   return NULL;
+}
+
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_list(struct wpa_secure_nan *secure_nan, u8 *mac)
+{
+    return NULL;
+}
+
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_id(struct wpa_secure_nan *secure_nan, u32 pairing_id)
+{
+  return NULL;
+}
+
+void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan)
+{
+   return;
+}
+
+void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
+                                       u8 *mac)
+{
+   return;
+}
 
 int secure_nan_init(wifi_interface_handle iface)
 {
