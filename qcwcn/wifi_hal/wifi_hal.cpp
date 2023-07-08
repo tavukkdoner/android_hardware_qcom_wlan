@@ -15,7 +15,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -85,6 +85,7 @@
 #include "wifi_hal.h"
 #include "wifi_hal_ctrl.h"
 #include "common.h"
+#include "nan_i.h"
 #include "cpp_bindings.h"
 #include "ifaceeventhandler.h"
 #include "wifiloggercmd.h"
@@ -1434,6 +1435,9 @@ wifi_error wifi_initialize(wifi_handle *handle)
     ALOGV("support_nan_ext_cmd is %d",
           info->support_nan_ext_cmd);
 
+    if (secure_nan_init(iface_handle))
+        ALOGE("%s: secure nan init failed", __FUNCTION__);
+
 #ifndef TARGET_SUPPORTS_WEARABLES
     ret = wifi_get_supported_iface_combination(iface_handle);
     if (ret != WIFI_SUCCESS) {
@@ -1610,6 +1614,8 @@ static void internal_cleaned_up_handler(wifi_handle handle)
     cleanupRSSIMonitorHandler(info);
     cleanupRadioHandler(info);
     cleanupTCPParamCommand(info);
+    if (secure_nan_deinit(info))
+        ALOGE("%s: secure nan deinit failed", __FUNCTION__);
 
     if (info->num_event_cb)
         ALOGE("%d events were leftover without being freed",
