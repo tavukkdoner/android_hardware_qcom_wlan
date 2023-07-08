@@ -694,6 +694,62 @@ typedef struct PACKED
     u8 s:1;
 } NanSidAttr, *pSidAttr;
 
+/* type + length + oui + oui type */
+#define NAN_IE_HEADER 6
+#define NAN_IE_VENDOR_TYPE 0x506f9a13
+#define DCEA_PARING_SETUP_ENABLED  BIT(8)
+#define DCEA_NPK_CACHING_ENABLED  BIT(9)
+
+/* As per NAN spec, below are the values defined for CSID attribute */
+#define NCS_SK_128          1
+#define NCS_SK_256          2
+#define NCS_PK_2WDH_128     3
+#define NCS_PK_2WDH_256     4
+#define NCS_GTK_CCMP_128    5
+#define NCS_GTK_GCMP_256    6
+#define NCS_PK_PASN_128     7
+#define NCS_PK_PASN_256     8
+
+enum nan_attr_id {
+    NAN_ATTR_ID_DCEA =  0x2A,
+    NAN_ATTR_ID_CSIA =  0x22,
+    NAN_ATTR_ID_NPBA =  0x2C,
+    NAN_ATTR_ID_NIRA =  0x2B,
+};
+
+typedef struct PACKED {
+        u8 attr_id;
+        u16 len;
+        u16 cap_info;
+} nan_dcea;
+
+typedef struct PACKED {
+        u8 cipher;
+        u8 pub_id;
+} nan_csa;
+
+typedef struct PACKED {
+        u8 attr_id;
+        u16 len;
+        u8 caps;
+        nan_csa csa[0];
+} nan_csia;
+
+typedef struct PACKED {
+        u8 attr_id;
+        u16 len;
+        u8 dialog_token;
+        u8 type_status;
+        u8 reason_code;
+        u16 bootstrapping_method;
+} nan_npba;
+
+typedef struct PACKED {
+        u8 attr_id;
+        u16 len;
+        u8 cipher_ver;
+        u8 nonce_tag[32];
+} nan_nira;
 
 /* NAN Configuration Req */
 typedef struct PACKED
@@ -1483,6 +1539,13 @@ int nan_send_tx_mgmt(void *ctx, const u8 *frame_buf, size_t frame_len,
                      int noack, unsigned int freq, unsigned int wait_dur);
 struct wpabuf *nan_pairing_generate_rsn_ie(int akmp, int cipher, u8 *pmkid);
 struct wpabuf *nan_pairing_generate_rsnxe(int akmp);
+const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr);
+const u8 *nan_get_attr_from_ies(const u8 *ies, size_t ies_len,
+                                enum nan_attr_id attr);
+void nan_pairing_add_setup_ies(struct wpa_secure_nan *secure_nan,
+                               struct pasn_data *pasn, int peer_role);
+void nan_pairing_add_verification_ies(struct wpa_secure_nan *secure_nan,
+                                      struct pasn_data *pasn, int peer_role);
 
 #ifdef __cplusplus
 }
