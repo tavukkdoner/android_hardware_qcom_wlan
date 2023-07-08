@@ -288,6 +288,192 @@ static int nan_pairing_register_pasn_auth_frames(wifi_interface_handle iface)
     return 0;
 }
 
+int nan_pasn_kdk_to_ndp_pmk(const u8 *kdk, size_t kdk_len, const u8 *spa,
+                            const u8 *bssid, u8 *ndp_pmk, u32 *ndp_pmk_len)
+{
+    u8 tmp[WPA_NDP_PMK_MAX_LEN];
+    u8 *data;
+    size_t data_len;
+    int ret = -1;
+    const char *label = "NDP PMK Derivation";
+
+    *ndp_pmk_len = 0;
+
+    if (!kdk || !kdk_len) {
+        ALOGE("PASN: No KDK set for NDP PMK derivation");
+        return -1;
+    }
+
+    if (!bssid || !spa || !ndp_pmk) {
+        ALOGE("PASN: Invalid arguments");
+        return -1;
+    }
+
+    /*
+     * NDP-PMK = KDF-256(KDK, “NDP PMK Derivation”, Initiator NMI || Responder NMI)
+     */
+    data_len = 2 * ETH_ALEN;
+    data = (u8 *)os_zalloc(data_len);
+    if (!data) {
+        ALOGE("%s: Memory allocation failed", __FUNCTION__);
+        return -1;
+    }
+
+    os_memcpy(data, spa, ETH_ALEN);
+    os_memcpy(data + ETH_ALEN, bssid, ETH_ALEN);
+
+    ALOGD("PASN: NDP PMK derivation: SPA=" MACSTR " BSSID=" MACSTR,
+          MAC2STR(spa), MAC2STR(bssid));
+
+    ret = sha256_prf(kdk, kdk_len, label, data, data_len, tmp, WPA_NDP_PMK_MAX_LEN);
+    if (ret < 0) {
+        ALOGE("%s: PMK derivation failed, err = %d", __FUNCTION__, ret);
+        goto err;
+    }
+
+    os_memcpy(ndp_pmk, tmp, WPA_NDP_PMK_MAX_LEN);
+    *ndp_pmk_len = WPA_NDP_PMK_MAX_LEN;
+
+    forced_memzero(tmp, sizeof(tmp));
+    ret = 0;
+err:
+    bin_clear_free(data, data_len);
+    return ret;
+}
+
+int nan_pasn_kdk_to_opportunistic_npk(const u8 *kdk, size_t kdk_len,
+                                      const u8 *spa, const u8 *bssid,
+                                      int akmp, int cipher, u8 *opp_npk,
+                                      size_t *opp_npk_len)
+{
+    u8 tmp[WPA_OPP_NPK_MAX_LEN];
+    u8 *data;
+    size_t data_len, key_len;
+    int ret = -1;
+    const char *label = "NAN Opportunistic NPK Derivation";
+
+    *opp_npk_len = 0;
+
+    if (!kdk || !kdk_len) {
+        ALOGE("PASN: No KDK set for NAN Opportunistic NPK derivation");
+        return -1;
+    }
+
+    if (!bssid || !spa || !opp_npk) {
+        ALOGE("PASN: Invalid arguments");
+        return -1;
+    }
+
+    /*
+     * PASN-Opportunistic-NPK = KDF-256(KDK, “NAN Opportunistic NPK Derivation”, Initiator NMI || Responder NMI)
+     */
+    data_len = 2 * ETH_ALEN;
+    data = (u8 *)os_zalloc(data_len);
+    if (!data) {
+        ALOGE("%s: Memory allocation failed", __FUNCTION__);
+        return -1;
+    }
+
+    os_memcpy(data, spa, ETH_ALEN);
+    os_memcpy(data + ETH_ALEN, bssid, ETH_ALEN);
+
+    key_len = wpa_cipher_key_len(cipher);
+
+    if (key_len == 0) {
+        ALOGE("PASN: Unsupported cipher (0x%x) used in NAN Opportunistic NPK derivation",
+              cipher);
+        goto err;
+    }
+
+    ALOGD("PASN: NAN Opportunistic NPK derivation: SPA=" MACSTR " BSSID=" MACSTR " akmp=0x%x, cipher=0x%x",
+          MAC2STR(spa), MAC2STR(bssid), akmp, cipher);
+
+    if (pasn_use_sha384(akmp, cipher))
+        ret = sha384_prf(kdk, kdk_len, label, data, data_len, tmp, key_len);
+    else
+        ret = sha256_prf(kdk, kdk_len, label, data, data_len, tmp, key_len);
+
+    if (ret < 0) {
+        ALOGE("%s: sha prf failed, err = %d", __FUNCTION__, ret);
+        goto err;
+    }
+
+    os_memcpy(opp_npk, tmp, key_len);
+    *opp_npk_len = key_len;
+
+    forced_memzero(tmp, sizeof(tmp));
+    ret = 0;
+err:
+    bin_clear_free(data, data_len);
+    return ret;
+}
+
+int nan_pasn_kdk_to_nan_kek(const u8 *kdk, size_t kdk_len, const u8 *spa,
+                            const u8 *bssid, int akmp, int cipher, u8 *nan_kek,
+                            size_t *nan_kek_len)
+{
+    u8 tmp[WPA_KEK_MAX_LEN];
+    u8 *data;
+    size_t data_len, key_len;
+    int ret = -1;
+    const char *label = "NAN Management KEK Derivation";
+
+    *nan_kek_len = 0;
+
+    if (!kdk || !kdk_len) {
+        ALOGE("PASN: No KDK set for NAN KEK derivation");
+        return -1;
+    }
+
+    if (!bssid || !spa || !nan_kek) {
+        ALOGE("PASN: Invalid arguments");
+        return -1;
+    }
+
+    /*
+     * PASN-KEK = KDF(KDK, “NAN Management KEK Derivation”, Initiator NMI || Responder NMI)
+     */
+    data_len = 2 * ETH_ALEN;
+    data = (u8 *)os_zalloc(data_len);
+    if (!data) {
+        ALOGE("%s: Memory allocation failed", __FUNCTION__);
+        return -1;
+    }
+
+    os_memcpy(data, spa, ETH_ALEN);
+    os_memcpy(data + ETH_ALEN, bssid, ETH_ALEN);
+
+    key_len = wpa_cipher_key_len(cipher);
+
+    if (key_len == 0) {
+        ALOGE("PASN: Unsupported cipher (0x%x) used in NAN KEK derivation",
+              cipher);
+        goto err;
+    }
+
+    ALOGD("PASN: NAN KEK derivation: SPA=" MACSTR " BSSID=" MACSTR " akmp=0x%x, cipher=0x%x",
+          MAC2STR(spa), MAC2STR(bssid), akmp, cipher);
+
+    if (pasn_use_sha384(akmp, cipher))
+        ret = sha384_prf(kdk, kdk_len, label, data, data_len, tmp, key_len);
+    else
+        ret = sha256_prf(kdk, kdk_len, label, data, data_len, tmp, key_len);
+
+    if (ret < 0) {
+        ALOGE("%s: sha prf failed, err = %d", __FUNCTION__, ret);
+        goto err;
+    }
+
+    os_memcpy(nan_kek, tmp, key_len);
+    *nan_kek_len = key_len;
+
+    forced_memzero(tmp, sizeof(tmp));
+    ret = 0;
+err:
+    bin_clear_free(data, data_len);
+    return ret;
+}
+
 const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr)
 {
   const u8 *nan;
