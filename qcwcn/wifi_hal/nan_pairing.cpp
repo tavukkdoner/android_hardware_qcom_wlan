@@ -915,6 +915,11 @@ int secure_nan_init(wifi_interface_handle iface)
 
     secure_nan = (struct wpa_secure_nan *)os_zalloc(sizeof(*secure_nan));
 
+    if (eloop_init()) {
+        ALOGE("Secure NAN eloop init failed");
+        return -1;
+    }
+
     secure_nan->cb_ctx = wifiHandle;
     secure_nan->cb_iface_ctx = iface;
     secure_nan->ptksa = ptksa_cache_init();
@@ -947,6 +952,9 @@ int secure_nan_init(wifi_interface_handle iface)
         ALOGE("Secure NAN Register PASN auth failed");
         return -1;
     }
+
+    eloop_run();
+
     return 0;
 }
 
@@ -966,6 +974,7 @@ int secure_nan_deinit(hal_info *info)
     nan_pairing_initiator_pmksa_cache_deinit(info->secure_nan->initiator_pmksa);
     nan_pairing_responder_pmksa_cache_deinit(info->secure_nan->responder_pmksa);
     nan_pairing_delete_list(info->secure_nan);
+    eloop_destroy();
 
     os_free(info->secure_nan);
     info->secure_nan = NULL;

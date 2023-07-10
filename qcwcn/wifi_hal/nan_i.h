@@ -63,6 +63,7 @@ extern "C"
 #ifdef WPA_PASN_LIB
 #include "utils/os.h"
 #include "utils/common.h"
+#include "utils/eloop.h"
 #include "common/defs.h"
 #include "common/wpa_common.h"
 #include "common/sae.h"
