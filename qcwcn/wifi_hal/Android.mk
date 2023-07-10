@@ -37,6 +37,8 @@ include $(BUILD_HEADER_LIBRARY)
 # ============================================================
 include $(CLEAR_VARS)
 
+NAN_PAIRING=n
+
 LOCAL_CFLAGS := -Wno-unused-parameter
 ifeq ($(TARGET_BUILD_VARIANT),userdebug)
 LOCAL_CFLAGS += "-DLOG_NDEBUG=0"
@@ -55,6 +57,7 @@ LOCAL_CLANG_CFLAGS := -Wno-pointer-bool-conversion
 
 LOCAL_CFLAGS += -Wall -Werror
 
+ifeq ($(NAN_PAIRING),y)
 ifeq ($(CONFIG_PASN),y)
 LOCAL_CFLAGS += -DWPA_PASN_LIB
 LOCAL_CFLAGS += -DCONFIG_PASN
@@ -76,6 +79,7 @@ LOCAL_CFLAGS += -DIEEE8021X_EAPOL
 endif
 ifeq ($(CONFIG_NO_RANDOM_POOL),y)
 LOCAL_CFLAGS += -DCONFIG_NO_RANDOM_POOL
+endif
 endif
 endif
 
@@ -134,8 +138,10 @@ LOCAL_VENDOR_MODULE := true
 LOCAL_CLANG := true
 LOCAL_SHARED_LIBRARIES += libnetutils liblog libcld80211
 LOCAL_SHARED_LIBRARIES += libcrypto
+ifeq ($(NAN_PAIRING),y)
 ifeq ($(CONFIG_PASN),y)
 LOCAL_SHARED_LIBRARIES += libpasn
+endif
 endif
 
 ifneq ($(wildcard external/libnl),)
@@ -169,6 +175,7 @@ ifeq ($(strip $(CONFIG_MAC_PRIVACY_LOGGING)),true)
 LOCAL_CFLAGS += -DCONFIG_MAC_PRIVACY_LOGGING
 endif
 
+ifeq ($(NAN_PAIRING),y)
 ifeq ($(CONFIG_PASN),y)
 LOCAL_CFLAGS += -DWPA_PASN_LIB
 LOCAL_CFLAGS += -DCONFIG_PASN
@@ -190,6 +197,7 @@ LOCAL_CFLAGS += -DIEEE8021X_EAPOL
 endif
 ifeq ($(CONFIG_NO_RANDOM_POOL),y)
 LOCAL_CFLAGS += -DCONFIG_NO_RANDOM_POOL
+endif
 endif
 endif
 
@@ -254,8 +262,10 @@ LOCAL_SHARED_LIBRARIES += libnetutils liblog
 LOCAL_SHARED_LIBRARIES += libdl libcld80211
 LOCAL_SHARED_LIBRARIES += libwifi-hal-ctrl
 LOCAL_SHARED_LIBRARIES += libcrypto
+ifeq ($(NAN_PAIRING),y)
 ifeq ($(CONFIG_PASN),y)
 LOCAL_SHARED_LIBRARIES += libpasn
+endif
 endif
 
 ifneq ($(wildcard external/libnl),)
