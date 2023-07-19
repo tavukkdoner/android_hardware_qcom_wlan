@@ -102,6 +102,7 @@ private:
     u32 mNanDataLen;
     NanStaParameter *mStaParam;
     u8 mNmiMac[NAN_MAC_ADDR_LEN];
+    u8 mClusterAddr[NAN_MAC_ADDR_LEN];
     u32 mNanMaxPublishes;
     u32 mNanMaxSubscribes;
     NanStoreSvcParams *mStorePubParams;
@@ -123,6 +124,8 @@ private:
     //Function which calls the necessaryIndication callback
     //based on the indication type
     int handleNanIndication();
+    int handleNanBootstrappingIndication();
+    int handleNanSharedKeyDescIndication();
     //Various Functions to get the appropriate indications
     int getNanPublishReplied(NanPublishRepliedInd *event);
     int getNanPublishTerminated(NanPublishTerminatedInd *event);
@@ -172,6 +175,8 @@ private:
                                 char* rspBuf,
                                 NanStatsResponse *pRsp,
                                 u32 message_len);
+    void getNanReceivePairingParamsMatch(const u8* pInValue,
+                                         NanPairingConfig *pPeerPairingParams);
 
     //Function which unparses the data and calls the NotifyResponse
     int handleNdpResponse(NanResponseType ndpCmdtyp, struct nlattr **tb_vendor);
@@ -200,11 +205,15 @@ public:
     //Functions to fill the vendor data appropriately
     wifi_error putNanEnable(transaction_id id, const NanEnableRequest *pReq);
     wifi_error putNanDisable(transaction_id id);
-    wifi_error putNanPublish(transaction_id id, const NanPublishRequest *pReq);
+    wifi_error putNanPublish(transaction_id id, const NanPublishRequest *pReq,
+                             const nanGrpKey *grp_keys);
     wifi_error putNanPublishCancel(transaction_id id, const NanPublishCancelRequest *pReq);
-    wifi_error putNanSubscribe(transaction_id id, const NanSubscribeRequest *pReq);
+    wifi_error putNanSubscribe(transaction_id id, const NanSubscribeRequest *pReq,
+                               const nanGrpKey *grp_keys);
     wifi_error putNanSubscribeCancel(transaction_id id, const NanSubscribeCancelRequest *pReq);
-    wifi_error putNanTransmitFollowup(transaction_id id, const NanTransmitFollowupRequest *pReq);
+    wifi_error putNanTransmitFollowup(transaction_id id,
+                                      const NanTransmitFollowupRequest *pReq,
+                                      const NanSharedKeyRequest *key);
     wifi_error putNanStats(transaction_id id, const NanStatsRequest *pReq);
     wifi_error putNanConfig(transaction_id id, const NanConfigRequest *pReq);
     wifi_error putNanTCA(transaction_id id, const NanTCARequest *pReq);
@@ -212,7 +221,16 @@ public:
     wifi_error getNanStaParameter(wifi_interface_handle iface, NanStaParameter *pRsp);
     wifi_error putNanCapabilities(transaction_id id);
     wifi_error putNanDebugCommand(NanDebugParams debug, int debug_msg_length);
-
+    wifi_error putNanBootstrappingReq(transaction_id id,
+                                      const NanBootstrappingRequest *pReq,
+                                      u16 pub_sub_id);
+    wifi_error putNanBootstrappingIndicationRsp(transaction_id id,
+                                const NanBootstrappingIndicationResponse *pRsp,
+                                      u16 pub_sub_id);
+    wifi_error putNanIdentityResolutionParams(transaction_id id,
+                                              NanNIRARequest *pReq);
+    wifi_error putNanSharedKeyDescriptorReq(transaction_id id,
+                                       const NanSharedKeyRequest *pReq);
     /* Functions for NAN error translation
        For NanResponse, NanPublishTerminatedInd, NanSubscribeTerminatedInd,
        NanDisabledInd, NanTransmitFollowupInd:
@@ -227,15 +245,23 @@ public:
     /* Functions for NAN passphrase to PMK calculation */
     void saveNmi(u8 *mac);
     u8 *getNmi();
+    void saveClusterAddr(u8 *mac);
+    u8 *getClusterAddr();
     void saveServiceId(u8 *service_id, u16 sub_pub_handle,
                         u32 instance_id, NanRole Pool);
     u8 *getServiceId(u32 instance_id, NanRole Pool);
+    u16 getPubSubId(u32 instance_id, NanRole pool);
     void deleteServiceId(u16 sub_handle, u32 instance_id, NanRole pool);
     void allocSvcParams();
     void reallocSvcParams(NanRole pool);
     void deallocSvcParams();
     void saveTransactionId(transaction_id id);
     transaction_id getTransactionId();
+    /* Functions for NAN Bootstrapping and Pairing */
+    int handleNanBootstrappingReqInd(NanBootstrappingRequestInd  *evt);
+    int handleNanBootstrappingConfirm(NanBootstrappingConfirmInd *evt);
+    int handleNanPairingReqInd(NanPairingRequestInd *evt);
+    int handleNanPairingConfirm(NanPairingConfirmInd *evt);
 };
 #endif /* __WIFI_HAL_NAN_COMMAND_H__ */
 

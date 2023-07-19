@@ -15,7 +15,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -85,6 +85,7 @@
 #include "wifi_hal.h"
 #include "wifi_hal_ctrl.h"
 #include "common.h"
+#include "nan_i.h"
 #include "cpp_bindings.h"
 #include "ifaceeventhandler.h"
 #include "wifiloggercmd.h"
@@ -155,6 +156,13 @@ wifi_error wifi_get_supported_iface_concurrency_matrix(
         wifi_iface_concurrency_matrix *iface_concurrency_matrix);
 #endif /* TARGET_SUPPORTS_WEARABLES */
 
+#ifdef WPA_PASN_LIB
+static const int nanPMKLifetime = 43200;
+void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
+                                  const u8 *frame, size_t len, struct nlattr *ack);
+void wifihal_event_mgmt(wifi_handle handle, struct nlattr *freq, const u8 *frame,
+                        size_t len);
+#endif
 /* Initialize/Cleanup */
 
 wifi_interface_handle wifi_get_iface_handle(wifi_handle handle, char *name)
@@ -1434,6 +1442,9 @@ wifi_error wifi_initialize(wifi_handle *handle)
     ALOGV("support_nan_ext_cmd is %d",
           info->support_nan_ext_cmd);
 
+    if (secure_nan_init(iface_handle))
+        ALOGE("%s: secure nan init failed", __FUNCTION__);
+
 #ifndef TARGET_SUPPORTS_WEARABLES
     ret = wifi_get_supported_iface_combination(iface_handle);
     if (ret != WIFI_SUCCESS) {
@@ -1610,6 +1621,8 @@ static void internal_cleaned_up_handler(wifi_handle handle)
     cleanupRSSIMonitorHandler(info);
     cleanupRadioHandler(info);
     cleanupTCPParamCommand(info);
+    if (secure_nan_deinit(info))
+        ALOGE("%s: secure nan deinit failed", __FUNCTION__);
 
     if (info->num_event_cb)
         ALOGE("%d events were leftover without being freed",
@@ -2183,6 +2196,46 @@ static int internal_valid_message_handler(nl_msg *msg, void *arg)
                   event.get_cmdString(), vendor_id, subcmd);
         }
     }
+    else if(cmd == NL80211_CMD_FRAME ||
+        cmd == NL80211_CMD_FRAME_TX_STATUS)
+    {
+        size_t len;
+        const u8 *data;
+        int ifidx = -1;
+        struct nlattr *frame;
+        struct nlattr *tb[NL80211_ATTR_MAX + 1];
+        struct genlmsghdr *gnlh = (genlmsghdr *) nlmsg_data(nlmsg_hdr(msg));
+
+        nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
+                  genlmsg_attrlen(gnlh, 0), NULL);
+
+        if (tb[NL80211_ATTR_IFINDEX])
+            ifidx = nla_get_u32(tb[NL80211_ATTR_IFINDEX]);
+
+        ALOGV("nl80211: Drv Event %d (%s) received for ifidx:%d",
+              cmd, event.get_cmdString(), ifidx);
+
+        frame = tb[NL80211_ATTR_FRAME];
+
+        if (frame == NULL) {
+            ALOGD("No Frame body");
+            return WIFI_SUCCESS;
+        }
+
+        data = (const u8*) nla_data(frame);
+        len = nla_len(frame);
+
+#ifdef WPA_PASN_LIB
+        if (cmd == NL80211_CMD_FRAME) {
+            wifihal_event_mgmt(handle, tb[NL80211_ATTR_WIPHY_FREQ],
+                               (const u8*) nla_data(frame), nla_len(frame));
+        } else {
+            wifihal_event_mgmt_tx_status(handle, tb[NL80211_ATTR_COOKIE],
+                                         (const u8*) nla_data(frame),
+                                         nla_len(frame), tb[NL80211_ATTR_ACK]);
+        }
+#endif
+    }
     else if((info->wifihal_ctrl_sock.s > 0) && (cmd == NL80211_CMD_FRAME))
     {
        struct genlmsghdr *genlh;
@@ -2378,7 +2431,8 @@ static bool is_wifi_interface(const char *name)
 
     if (strncmp(name, "wlan", 4) != 0 && strncmp(name, "p2p", 3) != 0
         && strncmp(name, "wifi", 4) != 0
-        && strncmp(name, "swlan", 5) != 0) {
+        && strncmp(name, "swlan", 5) != 0
+        && strncmp(name, "xsap", 4) != 0) {
         /* not a wifi interface; ignore it */
         return false;
     } else {
@@ -3803,7 +3857,7 @@ cleanup:
     return ret;
 }
 
-#define SIZEOF_TLV_HDR 4
+#define SIZEOF_TLV_HEADER 4
 #define OEM_DATA_TLV_TYPE_HEADER 1
 #define OEM_DATA_CMD_SET_SKIP_CAC   18
 
@@ -3818,7 +3872,7 @@ static int wifi_add_oem_data_head(int cmd_id, u8* oem_buf, size_t max)
     oem_hdr.cmd_id = cmd_id;
     oem_hdr.request_idx = 0;
 
-    if ((SIZEOF_TLV_HDR + sizeof(oem_hdr)) > max) {
+    if ((SIZEOF_TLV_HEADER + sizeof(oem_hdr)) > max) {
         return 0;
     }
 
@@ -3829,7 +3883,7 @@ static int wifi_add_oem_data_head(int cmd_id, u8* oem_buf, size_t max)
     memcpy(oem_buf, (u8 *)&oem_hdr, sizeof(oem_hdr));
     oem_buf += sizeof(oem_hdr);
 
-    return (SIZEOF_TLV_HDR + sizeof(oem_hdr));
+    return (SIZEOF_TLV_HEADER + sizeof(oem_hdr));
 }
 
 
@@ -3935,3 +3989,118 @@ wifi_error wifi_get_supported_iface_concurrency_matrix(
     return WIFI_SUCCESS;
 }
 #endif /* TARGET_SUPPORTS_WEARABLES */
+
+#ifdef WPA_PASN_LIB
+
+void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
+                                  const u8 *frame, size_t len, struct nlattr *ack)
+{
+    int ret = 0;
+    struct pasn_data *pasn;
+    hal_info *info = getHalInfo(handle);
+    struct nan_pairing_peer_info *peer;
+    const struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) frame;
+
+    if (!info || !info->secure_nan) {
+        ALOGE("%s: secure nan NULL", __FUNCTION__);
+        return;
+    }
+
+    peer = nan_pairing_get_peer_from_list(info->secure_nan, (u8 *)mgmt->da);
+    if (!peer) {
+        ALOGE("nl80211: Peer not found in the pairing list");
+        return;
+    }
+
+    pasn = &peer->pasn;
+
+    ALOGV("nl80211: Authentication frame TX status: ack=%d", !!ack);
+    ret = wpa_pasn_auth_tx_status(pasn, frame, len, ack != NULL);
+    if (ret == 1) {
+        ALOGI("nl80211: PASN transaction Success");
+        nan_pairing_set_keys_from_cache(handle, pasn->own_addr, pasn->peer_addr,
+                                        pasn->cipher, pasn->akmp,
+                                        SECURE_NAN_PAIRING_RESPONDER);
+        wpa_pasn_reset(pasn);
+        peer->is_paired = true;
+        return;
+    }
+}
+
+void wifihal_event_mgmt(wifi_handle handle, struct nlattr *freq, const u8 *frame,
+                        size_t len)
+{
+    int ret = 0;
+    u16 fc, stype;
+    int rx_freq = 0;
+    const u8 *nan_attr_ie;
+    struct pasn_data *pasn;
+    hal_info *info = getHalInfo(handle);
+    struct wpa_pasn_params_data pasn_data;
+    struct nan_pairing_peer_info *peer;
+    const struct ieee80211_hdr *hdr = (const struct ieee80211_hdr *)frame;
+    const struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) frame;
+
+    if (!info || !info->secure_nan) {
+        ALOGE("%s: secure nan NULL", __FUNCTION__);
+        return;
+    }
+
+    if (len < 24) {
+        ALOGI("nl80211: Too short management frame");
+        return;
+    }
+
+    peer = nan_pairing_get_peer_from_list(info->secure_nan, (u8 *)mgmt->sa);
+    if (!peer) {
+        ALOGE("nl80211: Peer not found in the pairing list");
+        return;
+    }
+
+    pasn = &peer->pasn;
+    fc = le_to_host16(hdr->frame_control);
+    stype = WLAN_FC_GET_STYPE(fc);
+
+    if (WLAN_FC_GET_TYPE(fc) != WLAN_FC_TYPE_MGMT ||
+        WLAN_FC_GET_STYPE(fc) != WLAN_FC_STYPE_AUTH)
+        return;
+
+    if (freq)
+        rx_freq = nla_get_u32(freq);
+
+    ALOGI("nl80211: RX frame da=" MACSTR " sa=" MACSTR " bssid=" MACSTR
+          " freq=%d fc=0x%x seq_ctrl=0x%x stype=%u len=%u",
+          MAC2STR(hdr->addr1), MAC2STR(hdr->addr2), MAC2STR(hdr->addr3),
+          rx_freq, fc,
+          le_to_host16(hdr->seq_ctrl), stype,
+          (unsigned int) len);
+
+    if (peer->peer_role == SECURE_NAN_PAIRING_RESPONDER) {
+        if (os_memcmp(mgmt->da, info->secure_nan->own_addr, ETH_ALEN) != 0) {
+            ALOGE(" %s Pairing Initiator: Not our frame", __FUNCTION__);
+            return;
+        }
+
+        ret = wpa_pasn_auth_rx(pasn, frame, len, &pasn_data);
+        if (ret == 0) {
+            nan_attr_ie = nan_get_attr_from_ies(mgmt->u.auth.variable,
+                             len - offsetof(struct ieee80211_mgmt, u.auth.variable),
+                             NAN_ATTR_ID_DCEA);
+            if (nan_attr_ie) {
+               nan_dcea *dcea = (nan_dcea *)nan_attr_ie;
+               peer->dcea_cap_info = dcea->cap_info;
+            }
+            ptksa_cache_add(info->secure_nan->ptksa, pasn->own_addr,
+                            pasn->peer_addr, pasn->cipher, nanPMKLifetime,
+                            &pasn->ptk, NULL, NULL, pasn->akmp);
+            memset(&pasn->ptk, 0, sizeof(pasn->ptk));
+        } else if (ret == -1) {
+            wpa_pasn_reset(pasn);
+            ALOGE(" %s wpa_pasn_auth_rx failed", __FUNCTION__);
+            peer->peer_role = SECURE_NAN_IDLE;
+        }
+    } else {
+       nan_pairing_handle_pasn_auth(handle, frame, len);
+    }
+}
+#endif /* WPA_PASN_LIB */

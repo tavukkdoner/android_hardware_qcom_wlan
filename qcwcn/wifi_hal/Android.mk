@@ -37,6 +37,8 @@ include $(BUILD_HEADER_LIBRARY)
 # ============================================================
 include $(CLEAR_VARS)
 
+NAN_PAIRING=n
+
 LOCAL_CFLAGS := -Wno-unused-parameter
 ifeq ($(TARGET_BUILD_VARIANT),userdebug)
 LOCAL_CFLAGS += "-DLOG_NDEBUG=0"
@@ -55,6 +57,32 @@ LOCAL_CLANG_CFLAGS := -Wno-pointer-bool-conversion
 
 LOCAL_CFLAGS += -Wall -Werror
 
+ifeq ($(NAN_PAIRING),y)
+ifeq ($(CONFIG_PASN),y)
+LOCAL_CFLAGS += -DWPA_PASN_LIB
+LOCAL_CFLAGS += -DCONFIG_PASN
+LOCAL_CFLAGS += -DCONFIG_PTKSA_CACHE
+ifeq ($(CONFIG_SAE),y)
+LOCAL_CFLAGS += -DCONFIG_SAE
+endif
+ifeq ($(CONFIG_FILS),y)
+LOCAL_CFLAGS += -DCONFIG_FILS
+endif
+ifeq ($(CONFIG_IEEE80211R),y)
+LOCAL_CFLAGS += -DCONFIG_IEEE80211R
+endif
+ifeq ($(CONFIG_TESTING_OPTIONS),y)
+LOCAL_CFLAGS += -DCONFIG_TESTING_OPTIONS
+endif
+ifeq ($(CONFIG_IEEE8021X_EAPOL),y)
+LOCAL_CFLAGS += -DIEEE8021X_EAPOL
+endif
+ifeq ($(CONFIG_NO_RANDOM_POOL),y)
+LOCAL_CFLAGS += -DCONFIG_NO_RANDOM_POOL
+endif
+endif
+endif
+
 ifdef WIFI_DRIVER_STATE_CTRL_PARAM
 LOCAL_CFLAGS += -DWIFI_DRIVER_STATE_CTRL_PARAM=\"$(WIFI_DRIVER_STATE_CTRL_PARAM)\"
 ifdef WIFI_DRIVER_STATE_ON
@@ -67,6 +95,8 @@ LOCAL_C_INCLUDES += \
 	external/libnl/include \
 	$(call include-path-for, libhardware_legacy)/hardware_legacy \
 	external/wpa_supplicant_8/src/drivers \
+	external/wpa_supplicant_8/src \
+	external/wpa_supplicant_8/src/utils \
 	$(TARGET_OUT_HEADERS)/cld80211-lib
 
 LOCAL_C_INCLUDES += \
@@ -98,13 +128,21 @@ LOCAL_SRC_FILES := \
 	roam.cpp \
 	radio_mode.cpp \
 	tcp_params_update.cpp \
-	wifihal_vendor.cpp
+	wifihal_vendor.cpp \
+	nan_pairing.cpp \
+	nan_pairing_responder.cpp \
+	nan_pairing_initiator.cpp
 
 LOCAL_MODULE := libwifi-hal-qcom
 LOCAL_VENDOR_MODULE := true
 LOCAL_CLANG := true
 LOCAL_SHARED_LIBRARIES += libnetutils liblog libcld80211
 LOCAL_SHARED_LIBRARIES += libcrypto
+ifeq ($(NAN_PAIRING),y)
+ifeq ($(CONFIG_PASN),y)
+LOCAL_SHARED_LIBRARIES += libpasn
+endif
+endif
 
 ifneq ($(wildcard external/libnl),)
 LOCAL_SHARED_LIBRARIES += libnl
@@ -137,6 +175,32 @@ ifeq ($(strip $(CONFIG_MAC_PRIVACY_LOGGING)),true)
 LOCAL_CFLAGS += -DCONFIG_MAC_PRIVACY_LOGGING
 endif
 
+ifeq ($(NAN_PAIRING),y)
+ifeq ($(CONFIG_PASN),y)
+LOCAL_CFLAGS += -DWPA_PASN_LIB
+LOCAL_CFLAGS += -DCONFIG_PASN
+LOCAL_CFLAGS += -DCONFIG_PTKSA_CACHE
+ifeq ($(CONFIG_SAE),y)
+LOCAL_CFLAGS += -DCONFIG_SAE
+endif
+ifeq ($(CONFIG_FILS),y)
+LOCAL_CFLAGS += -DCONFIG_FILS
+endif
+ifeq ($(CONFIG_IEEE80211R),y)
+LOCAL_CFLAGS += -DCONFIG_IEEE80211R
+endif
+ifeq ($(CONFIG_TESTING_OPTIONS),y)
+LOCAL_CFLAGS += -DCONFIG_TESTING_OPTIONS
+endif
+ifeq ($(CONFIG_IEEE8021X_EAPOL),y)
+LOCAL_CFLAGS += -DIEEE8021X_EAPOL
+endif
+ifeq ($(CONFIG_NO_RANDOM_POOL),y)
+LOCAL_CFLAGS += -DCONFIG_NO_RANDOM_POOL
+endif
+endif
+endif
+
 # gscan.cpp: address of array 'cached_results[i].results' will always evaluate to 'true'
 LOCAL_CLANG_CFLAGS := -Wno-pointer-bool-conversion
 
@@ -152,6 +216,8 @@ LOCAL_C_INCLUDES += \
 	external/libnl/include \
 	$(call include-path-for, libhardware_legacy)/hardware_legacy \
 	external/wpa_supplicant_8/src/drivers \
+	external/wpa_supplicant_8/src \
+	external/wpa_supplicant_8/src/utils \
 	$(TARGET_OUT_HEADERS)/cld80211-lib
 
 LOCAL_C_INCLUDES += \
@@ -183,7 +249,10 @@ LOCAL_SRC_FILES := \
 	roam.cpp \
 	radio_mode.cpp \
 	tcp_params_update.cpp \
-	wifihal_vendor.cpp
+	wifihal_vendor.cpp \
+	nan_pairing.cpp \
+	nan_pairing_responder.cpp \
+	nan_pairing_initiator.cpp
 
 LOCAL_CFLAGS += -Wall -Werror
 LOCAL_MODULE := libwifi-hal-qcom
@@ -193,6 +262,11 @@ LOCAL_SHARED_LIBRARIES += libnetutils liblog
 LOCAL_SHARED_LIBRARIES += libdl libcld80211
 LOCAL_SHARED_LIBRARIES += libwifi-hal-ctrl
 LOCAL_SHARED_LIBRARIES += libcrypto
+ifeq ($(NAN_PAIRING),y)
+ifeq ($(CONFIG_PASN),y)
+LOCAL_SHARED_LIBRARIES += libpasn
+endif
+endif
 
 ifneq ($(wildcard external/libnl),)
 LOCAL_SHARED_LIBRARIES += libnl

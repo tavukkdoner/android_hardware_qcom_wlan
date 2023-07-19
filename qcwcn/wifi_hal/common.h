@@ -15,7 +15,7 @@
  *
  * Changes from Qualcomm Innovation Center are provided under the following license:
  *
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted (subject to the limitations in the
@@ -105,6 +105,8 @@
 #define BIT(x) (1 << (x))
 #endif
 
+#define DEFAULT_NAN_IFACE    "wifi-aware0"
+
 typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
@@ -152,6 +154,7 @@ enum pkt_log_version {
 struct gscan_event_handlers_s;
 struct rssi_monitor_event_handler_s;
 struct cld80211_ctx;
+struct wpa_secure_nan;
 
 struct ctrl_sock {
     int s;
@@ -226,6 +229,7 @@ typedef struct hal_info_s {
     wifi_iface_concurrency_matrix iface_comb_matrix;
 #endif /* TARGET_SUPPORTS_WEARABLES */
     qca_wlan_vendor_sar_version sar_version;
+    struct wpa_secure_nan *secure_nan;
 } hal_info;
 
 typedef struct {

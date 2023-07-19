@@ -39,9 +39,11 @@ extern "C"
 #ifndef PACKED
 #define PACKED  __attribute__((packed))
 #endif
-#define NAN_CERT_VERSION                        5
+#define NAN_CERT_VERSION                        6
 #define NAN_MAX_DEBUG_MESSAGE_DATA_LEN          100
 #define NAN_MAX_ALLOWED_DW_AWAKE_INTERVAL       16
+#define NAN_MAX_TK_LENGTH                       16
+#define NAN_MAX_PMKID_LENGTH                    16
 
 typedef struct {
     /* NAN master rank being advertised by DE */
@@ -61,7 +63,11 @@ typedef struct {
 typedef enum {
     NAN_DATA_PATH_SUPPORTED_BAND_2G = 1,
     NAN_DATA_PATH_SUPPORTED_BAND_5G = 2,
-    NAN_DATA_PATH_SUPPORT_DUAL_BAND = 3
+    NAN_DATA_PATH_SUPPORT_DUAL_BAND = 3,
+    NAN_DATA_PATH_SUPPORTED_BAND_6G = 4,
+    NAN_DATA_PATH_SUPPORTED_BAND_2G_6G = 5,
+    NAN_DATA_PATH_SUPPORTED_BAND_5G_6G = 6,
+    NAN_DATA_PATH_SUPPORTED_BAND_ALL = 7
 } NdpSupportedBand;
 
 /* NAN Responder mode policy */
@@ -160,6 +166,9 @@ typedef enum {
     NAN_TEST_MODE_CMD_ENABLE_NDP = 16,
     NAN_TEST_MODE_CMD_DISABLE_IPV6_LINK_LOCAL = 17,
     NAN_TEST_MODE_CMD_TRANSPORT_IP_PARAM = 18,
+    NAN_TEST_MODE_CMD_S3_ATTR_PARAMS = 19,
+    NAN_TEST_MODE_CMD_SCHED_UPDATE_S3_NOTIFY = 20,
+    NAN_TEST_MODE_CMD_PMK = 21,
 } NanDebugModeCmd;
 
 /*
@@ -224,6 +233,24 @@ typedef struct PACKED {
     u8 debug_cmd_data[NAN_MAX_DEBUG_MESSAGE_DATA_LEN];
 } NanDebugParams;
 
+typedef struct PACKED {
+    /* pairing tk buff */
+    u8 tk[NAN_MAX_TK_LENGTH];
+    /* tk length, tk valid if non zero */
+    u8 tk_len;
+    /* pairing peer bssid */
+    u8 bssid[NAN_MAC_ADDR_LEN];
+} NanPairingTK;
+
+typedef struct PACKED {
+    /* pairing pmkid buff */
+    u8 pmkid[NAN_MAX_PMKID_LENGTH];
+    /* pmkid length, pmkid valid if non zero */
+    u8 pmkid_len;
+    /* pairing peer bssid */
+    u8 bssid[NAN_MAC_ADDR_LEN];
+} NanPairingPmkid;
+
 /*
    Function to get the sta_parameter expected by Sigma
    as per CAPI spec.
@@ -236,6 +263,14 @@ wifi_error nan_debug_command_config(transaction_id id,
                                    wifi_interface_handle iface,
                                    NanDebugParams msg,
                                    int debug_msg_length);
+
+wifi_error nan_get_pairing_tk(transaction_id id,
+                              wifi_interface_handle iface,
+                              NanPairingTK *msg);
+
+wifi_error nan_get_pairing_pmkid(transaction_id id,
+                                 wifi_interface_handle iface,
+                                 NanPairingPmkid *msg);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
