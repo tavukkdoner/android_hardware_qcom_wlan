@@ -302,8 +302,6 @@ enum qca_wlan_vendor_attr_get_station_info {
 	QCA_WLAN_VENDOR_ATTR_GET_STATION_INFO_AFTER_LAST - 1,
 };
 
-#define NOISE_FLOOR_DBM (96)
-
 #define WMI_MAX_CHAINS (3)
 
 enum qca_vendor_wlan_chan_width {

@@ -1480,8 +1480,7 @@ static int get_sta_info_legacy_handler(struct nl_msg *msg, void *arg)
 				  nla_data(attr_sta_info),
 				  nla_len(attr_sta_info), NULL);
 			if (tb_sta_info[NL80211_STA_INFO_SIGNAL]) {
-				g_sta_info.rssi = nla_get_u8(tb_sta_info[NL80211_STA_INFO_SIGNAL]);
-				g_sta_info.rssi -= NOISE_FLOOR_DBM;
+				g_sta_info.rssi = (s8)nla_get_u8(tb_sta_info[NL80211_STA_INFO_SIGNAL]);
 				wpa_printf(MSG_INFO,"rssi %d", g_sta_info.rssi);
 			}
 			if (tb_sta_info[NL80211_STA_INFO_TX_BITRATE]) {
@@ -1947,18 +1946,12 @@ static int get_station_handler(struct nl_msg *msg, void *arg)
 			}
 		}
 
-		if (tb_sinfo[NL80211_STA_INFO_SIGNAL_AVG]) {
-			g_sta_info.rssi =
-				nla_get_u8(tb_sinfo[NL80211_STA_INFO_SIGNAL_AVG]);
-			g_sta_info.rssi -= NOISE_FLOOR_DBM;
-			wpa_printf(MSG_INFO,"rssi %d", g_sta_info.rssi);
-		}
-
 		if (tb_sinfo[NL80211_STA_INFO_SIGNAL]) {
-			g_sta_info.rx_lastpkt_rssi =
-				nla_get_u8(tb_sinfo[NL80211_STA_INFO_SIGNAL]);
-			g_sta_info.rx_lastpkt_rssi -= NOISE_FLOOR_DBM;
-			wpa_printf(MSG_INFO,"rx_lastpkt_rssi %d", g_sta_info.rx_lastpkt_rssi);
+			g_sta_info.rssi =
+				(s8)nla_get_u8(tb_sinfo[NL80211_STA_INFO_SIGNAL]);
+			g_sta_info.rx_lastpkt_rssi = g_sta_info.rssi;
+			wpa_printf(MSG_INFO,"rssi %d rx_lastpkt_rssi %d",
+				   g_sta_info.rssi, g_sta_info.rx_lastpkt_rssi);
 		}
 
 		if (tb_sinfo[NL80211_STA_INFO_CHAIN_SIGNAL_AVG]) {
@@ -1969,8 +1962,7 @@ static int get_station_handler(struct nl_msg *msg, void *arg)
 					wpa_printf(MSG_ERROR,"WMI_MAX_CHAINS reached");
 					break;
 				}
-				g_sta_info.avg_rssi_per_chain[num_chain] = nla_get_u8(attr);
-				g_sta_info.avg_rssi_per_chain[num_chain] -= NOISE_FLOOR_DBM;
+				g_sta_info.avg_rssi_per_chain[num_chain] = (s8)nla_get_u8(attr);
 				wpa_printf(MSG_INFO,"avg_rssi_per_chain[%d] %d", num_chain,
 				      g_sta_info.avg_rssi_per_chain[num_chain]);
 				num_chain++;
