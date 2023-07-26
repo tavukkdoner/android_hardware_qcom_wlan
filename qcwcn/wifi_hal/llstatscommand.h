@@ -61,7 +61,15 @@ typedef struct{
     wifi_iface_stat *iface_stat;
     int num_radios;
     wifi_radio_stat *radio_stat;
+    wifi_iface_ml_stat *iface_ml_stat;
 } LLStatsResultsParams;
+
+typedef struct{
+    int num_peers;
+    int num_rates;
+    u8 *link_ids;
+    wifi_peer_info *peers_info;
+} LinkPeerStatsResultsParams;
 
 typedef enum{
     eLLStatsSetParamsInvalid = 0,
@@ -76,6 +84,8 @@ private:
     LLStatsClearRspParams mClearRspParams;
 
     LLStatsResultsParams mResultsParams;
+
+    LinkPeerStatsResultsParams mPeerResultsParams;
 
     wifi_stats_result_handler mHandler;
 
@@ -113,6 +123,20 @@ public:
 
     virtual wifi_error get_wifi_iface_stats(wifi_iface_stat *stats,
                                             struct nlattr **tb_vendor);
+
+    virtual bool isMlo();
+
+    virtual wifi_error copyMloStats();
+
+    virtual wifi_link_stat * copyMloPeerStats(wifi_link_stat *linkInfo, u8 *resultsBufEnd);
+
+    virtual int get_wifi_ml_iface_numlinks(struct nlattr **tb_vendor);
+
+    virtual wifi_error get_wifi_ml_iface_stats(wifi_iface_ml_stat *stats,
+                                               struct nlattr **tb_vendor);
+
+    virtual wifi_error get_wifi_ml_iface_link_states(wifi_iface_ml_stat *stats,
+                                                    struct nlattr **tb_link_vendor);
 
     virtual void setHandler(wifi_stats_result_handler handler);
 

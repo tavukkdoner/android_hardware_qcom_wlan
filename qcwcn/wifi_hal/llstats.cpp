@@ -56,6 +56,7 @@ LLStatsCommand::LLStatsCommand(wifi_handle handle, int id, u32 vendor_id, u32 su
 {
     memset(&mClearRspParams, 0,sizeof(LLStatsClearRspParams));
     memset(&mResultsParams, 0,sizeof(LLStatsResultsParams));
+    memset(&mPeerResultsParams, 0,sizeof(LinkPeerStatsResultsParams));
     memset(&mHandler, 0,sizeof(mHandler));
     mRadioStatsSize = 0;
     mNumRadios = 0;
@@ -515,6 +516,11 @@ static wifi_error get_wifi_peer_info(wifi_peer_info *stats,
             rateInfo = nla_next(rateInfo, &(rem)))
     {
         struct nlattr *tb2[ QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX+ 1];
+        if (i >= stats->num_rate) {
+             ALOGE("%s: Number of rates more than expected %d", __FUNCTION__,
+                   stats->num_rate);
+             return WIFI_ERROR_INVALID_ARGS;
+        }
         pRateStats = (wifi_rate_stat *) ((u8 *)stats->rate_stats + (i++ * sizeof(wifi_rate_stat)));
 
         nla_parse(tb2, QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX, (struct nlattr *) nla_data(rateInfo), nla_len(rateInfo), NULL);
@@ -524,6 +530,312 @@ static wifi_error get_wifi_peer_info(wifi_peer_info *stats,
             return ret;
         }
     }
+    return WIFI_SUCCESS;
+}
+
+wifi_error LLStatsCommand::get_wifi_ml_iface_link_states(wifi_iface_ml_stat *stats,
+                                                struct nlattr **tb_link_vendor)
+{
+    struct nlattr *linkInfo;
+    int rem, i;
+
+    for (linkInfo = (struct nlattr *) nla_data(tb_link_vendor[
+         QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG]),
+         rem = nla_len(tb_link_vendor[QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG]);
+                                 nla_ok(linkInfo, rem);
+                                 linkInfo = nla_next(linkInfo, &(rem)))
+    {
+        struct nlattr *tb[QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG_MAX + 1];
+        int link_state, link_id;
+
+        nla_parse(tb, QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG_MAX,
+                  (struct nlattr *) nla_data(linkInfo),
+                   nla_len(linkInfo), NULL);
+
+        if (!tb[QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG_LINK_ID] ||
+            !tb[QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG_STATE])
+        {
+            ALOGE("%s: link ID or link state not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+
+        link_id = nla_get_u8(tb[QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG_LINK_ID]);
+        link_state = nla_get_u32(tb[QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG_STATE]);
+#ifdef QC_HAL_DEBUG
+        ALOGV("%s: link id %d, link_state %d", __FUNCTION__, link_id, link_state);
+#endif
+        for (i = 0; i < stats->num_links; i++) {
+            if (stats->links[i].link_id == link_id) {
+                stats->links[i].state =
+                        (link_state == QCA_WLAN_VENDOR_LINK_STATE_INACTIVE) ?
+                            WIFI_LINK_STATE_NOT_IN_USE : WIFI_LINK_STATE_IN_USE;
+                break;
+            }
+        }
+    }
+    return WIFI_SUCCESS;
+}
+
+int LLStatsCommand::get_wifi_ml_iface_numlinks(struct nlattr **tb_vendor)
+{
+    int rem, numlink = 0;
+    struct nlattr *mloInfo;
+
+    for (mloInfo = (struct nlattr *) nla_data(tb_vendor[
+                    QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK]),
+                             rem = nla_len(tb_vendor[
+                             QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK]);
+                                nla_ok(mloInfo, rem);
+                                mloInfo = nla_next(mloInfo, &(rem)))
+    {
+        struct nlattr *tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX + 1];
+
+        nla_parse(tb_vendor2, QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX,
+                  (struct nlattr *) nla_data(mloInfo),
+                   nla_len(mloInfo), NULL);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID"
+                    "not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        if (nla_get_u8(tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID]) >=
+                       MAX_NUM_MLO_LINKS) {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID value %d is not valid",
+                  __FUNCTION__, nla_get_u8(tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID]));
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        numlink++;
+    }
+    return numlink;
+}
+
+wifi_error LLStatsCommand::get_wifi_ml_iface_stats(wifi_iface_ml_stat *stats,
+                                                struct nlattr **tb_vendor)
+{
+    wifi_error ret = WIFI_ERROR_UNKNOWN;
+    struct nlattr *mloInfo;
+    int rem, numlink = 0;
+
+    for (mloInfo = (struct nlattr *) nla_data(tb_vendor[
+                    QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK]),
+                             rem = nla_len(tb_vendor[
+                             QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK]);
+                                nla_ok(mloInfo, rem);
+                                mloInfo = nla_next(mloInfo, &(rem)))
+    {
+        struct nlattr *wmmInfo;
+        wifi_wmm_ac_stat *pWmmStats;
+        int i=0, rem1;
+        struct nlattr *tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX + 1];
+
+        if (numlink >= stats->num_links) {
+             ALOGE("%s: Number of links more than expected", __FUNCTION__);
+             return WIFI_ERROR_INVALID_ARGS;
+        }
+        nla_parse(tb_vendor2, QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX,
+                  (struct nlattr *) nla_data(mloInfo),
+                   nla_len(mloInfo), NULL);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID"
+                    "not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].link_id = nla_get_u8(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID]);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_RADIO_ID])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_RADIO_ID"
+                    "not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].radio = nla_get_u32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_RADIO_ID]);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_CHANNEL_INFO_CENTER_FREQ])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_CHANNEL_INFO_CENTER_FREQ"
+                    "not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].frequency = (wifi_channel)nla_get_u32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_CHANNEL_INFO_CENTER_FREQ]);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_BEACON_RX])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_BEACON_RX"
+                    "not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].beacon_rx = nla_get_u32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_BEACON_RX]);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_AVERAGE_TSF_OFFSET])
+        {
+            stats->links[numlink].average_tsf_offset = 0;
+        } else {
+            stats->links[numlink].average_tsf_offset = nla_get_u64(tb_vendor2[
+                    QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_AVERAGE_TSF_OFFSET]);
+        }
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_LEAKY_AP_DETECTED])
+        {
+            stats->links[numlink].leaky_ap_detected = 0;
+        } else {
+            stats->links[numlink].leaky_ap_detected = nla_get_u32(tb_vendor2[
+                    QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_LEAKY_AP_DETECTED]);
+        }
+
+        if (!tb_vendor2[
+            QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_LEAKY_AP_AVG_NUM_FRAMES_LEAKED])
+        {
+            stats->links[numlink].leaky_ap_avg_num_frames_leaked = 0;
+        } else {
+            stats->links[numlink].leaky_ap_avg_num_frames_leaked = nla_get_u32(tb_vendor2[
+               QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_LEAKY_AP_AVG_NUM_FRAMES_LEAKED]);
+        }
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_LEAKY_AP_GUARD_TIME])
+        {
+            stats->links[numlink].leaky_ap_guard_time = 0;
+        } else {
+            stats->links[numlink].leaky_ap_guard_time = nla_get_u32(tb_vendor2[
+                    QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_LEAKY_AP_GUARD_TIME]);
+        }
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_RX])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_RX"
+                    " not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].mgmt_rx = nla_get_u32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_RX]);
+
+        if (!tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_ACTION_RX])
+        {
+            ALOGE("%s: "
+                    "QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_ACTION_RX"
+                    " not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].mgmt_action_rx  = nla_get_u32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_ACTION_RX]);
+
+        if (!tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_ACTION_TX])
+        {
+            ALOGE("%s: "
+                    "QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_ACTION_TX"
+                    " not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].mgmt_action_tx  = nla_get_u32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_MGMT_ACTION_TX]);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_MGMT])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_MGMT"
+                    " not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].rssi_mgmt = get_s32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_MGMT]);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_DATA])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_DATA"
+                    " not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].rssi_data = get_s32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_DATA]);
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_ACK])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_ACK"
+                    " not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].rssi_ack = get_s32(tb_vendor2[
+                QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_RSSI_ACK]);
+#ifdef QC_HAL_DEBUG
+        ALOGV("WMM STATS");
+        ALOGV("linkId : %d "
+              "radio : %d "
+              "beaconRx : %u "
+              "mgmtRx : %u "
+              "mgmtActionRx  : %u "
+              "mgmtActionTx : %u "
+              "rssiMgmt : %d "
+              "rssiData : %d "
+              "rssiAck  : %d ",
+              stats->links[numlink].link_id,
+              stats->links[numlink].radio,
+              stats->links[numlink].beacon_rx,
+              stats->links[numlink].mgmt_rx,
+              stats->links[numlink].mgmt_action_rx,
+              stats->links[numlink].mgmt_action_tx,
+              stats->links[numlink].rssi_mgmt,
+              stats->links[numlink].rssi_data,
+              stats->links[numlink].rssi_ack);
+#endif
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_WMM_INFO])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_WMM_INFO"
+                    " not found", __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+#ifdef QC_HAL_DEBUG
+        ALOGV("%2s | %6s | %6s | %7s | %7s | %7s |"
+              " %7s | %8s | %7s | %12s |"
+              " %11s | %17s | %17s |"
+              " %17s | %20s",
+              "ac","txMpdu", "rxMpdu", "txMcast", "rxMcast", "rxAmpdu",
+              "txAmpdu", "mpduLost", "retries", "retriesShort",
+              "retriesLong", "contentionTimeMin", "contentionTimeMax",
+              "contentionTimeAvg", "contentionNumSamples");
+#endif
+        for (wmmInfo = (struct nlattr *) nla_data(tb_vendor2[
+                    QCA_WLAN_VENDOR_ATTR_LL_STATS_WMM_INFO]),
+                rem1 = nla_len(tb_vendor2[
+                    QCA_WLAN_VENDOR_ATTR_LL_STATS_WMM_INFO]);
+                nla_ok(wmmInfo, rem1);
+                wmmInfo = nla_next(wmmInfo, &(rem1)))
+        {
+            struct nlattr *tb2[ QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX+ 1];
+            if (i >= WIFI_AC_MAX) {
+                ALOGE("%s: Number of WMM AC stats more than expected", __FUNCTION__);
+                return WIFI_ERROR_INVALID_ARGS;
+            }
+            pWmmStats = (wifi_wmm_ac_stat *) ((u8 *)stats->links[numlink].ac
+                    + (i++ * sizeof(wifi_wmm_ac_stat)));
+            nla_parse(tb2, QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX,
+                    (struct nlattr *) nla_data(wmmInfo),
+                    nla_len(wmmInfo), NULL);
+            ret = get_wifi_wmm_ac_stat(pWmmStats, tb2);
+            if(ret != WIFI_SUCCESS)
+            {
+                return ret;
+            }
+        }
+
+        if (!tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_INFO_TS_DUTY_CYCLE])
+        {
+            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_INFO_TS_DUTY_CYCLE not found",
+                  __FUNCTION__);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
+        stats->links[numlink].time_slicing_duty_cycle_percent =
+            nla_get_u8(tb_vendor2[QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_INFO_TS_DUTY_CYCLE]);
+        numlink++;
+    }
+
     return WIFI_SUCCESS;
 }
 
@@ -873,21 +1185,164 @@ wifi_error LLStatsCommand::requestResponse()
     return WifiCommand::requestResponse(mMsg);
 }
 
+bool LLStatsCommand::isMlo()
+{
+    return mResultsParams.iface_ml_stat ? true : false;
+}
+
+wifi_link_stat * LLStatsCommand::copyMloPeerStats(wifi_link_stat *linkInfo, u8 *resultsBufEnd)
+{
+    int i, peer_offset;
+    int link_num_peers = 0, total_num_rates = 0;
+    wifi_peer_info *peer, *linkPeerStats;
+
+    linkPeerStats = linkInfo->peer_info;
+    if (!mPeerResultsParams.num_peers)
+        goto out;
+
+    for (i = 0; i < mPeerResultsParams.num_peers; i++) {
+
+        peer_offset = (i * sizeof(wifi_peer_info)) +
+                       (total_num_rates * sizeof(wifi_rate_stat));
+        peer = (wifi_peer_info *) ((u8 *)(mPeerResultsParams.peers_info) +
+                                   peer_offset);
+
+        if (mPeerResultsParams.link_ids &&
+            mPeerResultsParams.link_ids[i] == linkInfo->link_id) {
+            u8 *nextLinkPeerOffset = ((u8 *) linkPeerStats) +
+                sizeof(wifi_peer_info) + (peer->num_rate * sizeof(wifi_rate_stat));
+
+#ifdef QC_HAL_DEBUG
+            ALOGV("%s: link peer pointer %p, num_rates %d", __FUNCTION__,
+                  linkPeerStats, peer->num_rate);
+#endif
+            if (nextLinkPeerOffset > resultsBufEnd) {
+                ALOGE("%s: Buffer overflow while preparing response data %p",
+                      __FUNCTION__, nextLinkPeerOffset);
+                return NULL;
+            }
+
+            memcpy(linkPeerStats, peer, sizeof(wifi_peer_info));
+            memcpy(linkPeerStats->rate_stats, peer->rate_stats,
+                   peer->num_rate * sizeof(wifi_rate_stat));
+
+            linkPeerStats = (wifi_peer_info *) nextLinkPeerOffset;
+            link_num_peers++;
+        }
+        total_num_rates += peer->num_rate;
+    }
+
+out:
+    linkInfo->num_peers = link_num_peers;
+#ifdef QC_HAL_DEBUG
+    ALOGV("%s: link ID: %d, num_peers:%d ", __FUNCTION__,
+           linkInfo->link_id, linkInfo->num_peers);
+#endif
+
+    return (wifi_link_stat *) linkPeerStats;
+}
+
+wifi_error LLStatsCommand::copyMloStats()
+{
+    wifi_iface_ml_stat *pMlIfaceStat = NULL;
+    wifi_link_stat *linkInfo;
+    wifi_error status = WIFI_ERROR_NONE;
+    u32 mlResultsBufSize;
+    u8 *resultsBufEnd;
+    int i;
+
+    if (!mResultsParams.iface_ml_stat) {
+        ALOGE("%s: MLO stats not found");
+        goto cleanup;
+    }
+
+    mlResultsBufSize = sizeof(wifi_iface_ml_stat) +
+                       (mResultsParams.iface_ml_stat->num_links *
+                        sizeof(wifi_link_stat));
+    if (mPeerResultsParams.num_peers) {
+        mlResultsBufSize += (mPeerResultsParams.num_peers *
+                             sizeof(wifi_peer_info)) +
+                            (mPeerResultsParams.num_rates *
+                             sizeof(wifi_rate_stat));
+    } else {
+        ALOGI("%s:Peers info not reported", __FUNCTION__);
+    }
+
+
+    pMlIfaceStat = (wifi_iface_ml_stat *) malloc(mlResultsBufSize);
+    if (!pMlIfaceStat)
+    {
+        ALOGE("%s: pMlIfaceStat: malloc failed", __FUNCTION__);
+        status = WIFI_ERROR_OUT_OF_MEMORY;
+        goto cleanup;
+    }
+
+    resultsBufEnd = ((u8 *) pMlIfaceStat) + mlResultsBufSize;
+#ifdef QC_HAL_DEBUG
+    ALOGV("%s: mlResultsBufSize %d, result buffer start: %p, result buffer end: %p",
+          __FUNCTION__, mlResultsBufSize, pMlIfaceStat, resultsBufEnd);
+#endif
+
+    memset(pMlIfaceStat, 0, mlResultsBufSize);
+    memcpy(pMlIfaceStat, mResultsParams.iface_ml_stat,
+           sizeof(wifi_iface_ml_stat));
+
+    linkInfo = pMlIfaceStat->links;
+    for (i = 0; i < pMlIfaceStat->num_links; i++) {
+        if ((((u8 *) linkInfo) + sizeof(wifi_link_stat)) > resultsBufEnd) {
+            ALOGE("%s: Buffer overflow while preparing response data", __FUNCTION__);
+            status = WIFI_ERROR_UNKNOWN;
+            goto cleanup;
+        }
+
+        memcpy(linkInfo, &(mResultsParams.iface_ml_stat->links[i]),
+               sizeof(wifi_link_stat));
+#ifdef QC_HAL_DEBUG
+        ALOGV("%s: link ID: %d, state:%d pointer %p", __FUNCTION__,
+              linkInfo->link_id, linkInfo->state, linkInfo);
+#endif
+        linkInfo = copyMloPeerStats(linkInfo, resultsBufEnd);
+        if (!linkInfo) {
+            status = WIFI_ERROR_UNKNOWN;
+            goto cleanup;
+        }
+    }
+
+    free(mResultsParams.iface_ml_stat);
+    mResultsParams.iface_ml_stat = pMlIfaceStat;
+
+    return WIFI_SUCCESS;
+
+cleanup:
+    if (pMlIfaceStat)
+        free(pMlIfaceStat);
+    return status;
+}
+
 wifi_error LLStatsCommand::notifyResponse()
 {
     wifi_error ret = WIFI_ERROR_UNKNOWN;
 
     /* Indicate stats to framework only if both radio and iface stats
      * are present */
-    if (mResultsParams.radio_stat && mResultsParams.iface_stat) {
+    if (mResultsParams.radio_stat && (mResultsParams.iface_stat ||
+        mResultsParams.iface_ml_stat)) {
         if (mNumRadios > mNumRadiosAllocated) {
             ALOGE("%s: Force reset mNumRadios=%d to allocated=%d",
                     __FUNCTION__, mNumRadios, mNumRadiosAllocated);
             mNumRadios = mNumRadiosAllocated;
         }
-        mHandler.on_link_stats_results(mRequestId,
-                                       mResultsParams.iface_stat, mNumRadios,
-                                       mResultsParams.radio_stat);
+        if (mResultsParams.iface_ml_stat) {
+            mHandler.on_multi_link_stats_results(mRequestId,
+                                                 mResultsParams.iface_ml_stat,
+                                                 mNumRadios,
+                                                 mResultsParams.radio_stat);
+        } else {
+            mHandler.on_link_stats_results(mRequestId,
+                                           mResultsParams.iface_stat,
+                                           mNumRadios,
+                                           mResultsParams.radio_stat);
+        }
         ret = WIFI_SUCCESS;
     } else {
         ret = WIFI_ERROR_INVALID_ARGS;
@@ -929,6 +1384,23 @@ void LLStatsCommand::clearStats()
         free(mResultsParams.iface_stat);
         mResultsParams.iface_stat = NULL;
      }
+     if(mResultsParams.iface_ml_stat)
+     {
+        free(mResultsParams.iface_ml_stat);
+        mResultsParams.iface_ml_stat = NULL;
+     }
+     if(mPeerResultsParams.link_ids)
+     {
+        free(mPeerResultsParams.link_ids);
+        mPeerResultsParams.link_ids = NULL;
+     }
+     if(mPeerResultsParams.peers_info)
+     {
+        free(mPeerResultsParams.peers_info);
+        mPeerResultsParams.peers_info = NULL;
+     }
+     mPeerResultsParams.num_peers = 0;
+     mPeerResultsParams.num_rates = 0;
 }
 
 
@@ -1069,27 +1541,76 @@ int LLStatsCommand::handleResponse(WifiEvent &reply)
 
                 case QCA_NL80211_VENDOR_SUBCMD_LL_STATS_TYPE_IFACE:
                 {
-                    resultsBufSize = sizeof(wifi_iface_stat);
-                    mResultsParams.iface_stat =
-                        (wifi_iface_stat *) malloc (resultsBufSize);
-                    if (!mResultsParams.iface_stat)
-                    {
-                        ALOGE("%s: iface_stat: malloc Failed", __FUNCTION__);
-                        status = WIFI_ERROR_OUT_OF_MEMORY;
-                        goto cleanup;
-                    }
-                    memset(mResultsParams.iface_stat, 0, resultsBufSize);
-                    status = get_wifi_interface_info(
-                            &mResultsParams.iface_stat->info, tb_vendor);
-                    if(status != WIFI_SUCCESS)
-                    {
-                        goto cleanup;
-                    }
-                    status = get_wifi_iface_stats(mResultsParams.iface_stat,
-                            tb_vendor);
-                    if(status != WIFI_SUCCESS)
-                    {
-                        goto cleanup;
+                    if (mHandler.on_multi_link_stats_results &&
+                        tb_vendor[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK]) {
+                        int numLink;
+
+                        numLink = get_wifi_ml_iface_numlinks(tb_vendor);
+                        ALOGE("%s: Number of MLO links %d", __FUNCTION__, numLink);
+                        if(numLink <= 0 || numLink > MAX_NUM_MLO_LINKS)
+                        {
+                            status = WIFI_ERROR_INVALID_ARGS;
+                            goto cleanup;
+                        }
+                        resultsBufSize = (numLink * sizeof(wifi_link_stat)
+                                + sizeof(wifi_iface_ml_stat));
+                        mResultsParams.iface_ml_stat =
+                            (wifi_iface_ml_stat *) malloc (resultsBufSize);
+                        if (!mResultsParams.iface_ml_stat)
+                        {
+                            ALOGE("%s: iface_ml_stat: malloc failed", __FUNCTION__);
+                            status = WIFI_ERROR_OUT_OF_MEMORY;
+                            goto cleanup;
+                        }
+
+#ifdef QC_HAL_DEBUG
+                        ALOGV("%s: resultsBufSize %d, mResultsParams.iface_ml_stat %p,"
+                              " wifi_link_stat %d, wifi_iface_ml_stat %d,"
+                              " mResultsParams.iface_ml_stat end %p",
+                              __FUNCTION__, resultsBufSize, mResultsParams.iface_ml_stat,
+                              sizeof(wifi_link_stat), sizeof(wifi_iface_ml_stat),
+                              (u8 *) mResultsParams.iface_ml_stat + resultsBufSize);
+#endif
+                        memset(mResultsParams.iface_ml_stat, 0, resultsBufSize);
+                        status = get_wifi_interface_info(
+                                &mResultsParams.iface_ml_stat->info, tb_vendor);
+                        if(status != WIFI_SUCCESS)
+                        {
+                            goto cleanup;
+                        }
+                        mResultsParams.iface_ml_stat->num_links = numLink;
+                        status = get_wifi_ml_iface_stats(
+                                 mResultsParams.iface_ml_stat, tb_vendor);
+                        if(status != WIFI_SUCCESS)
+                        {
+                            goto cleanup;
+                        }
+                       for (i = 0; i < mResultsParams.iface_ml_stat->num_links; i++) {
+                           mResultsParams.iface_ml_stat->links[i].state = WIFI_LINK_STATE_UNKNOWN;
+                       }
+                    } else {
+                        resultsBufSize = sizeof(wifi_iface_stat);
+                        mResultsParams.iface_stat =
+                            (wifi_iface_stat *) malloc (resultsBufSize);
+                        if (!mResultsParams.iface_stat)
+                        {
+                            ALOGE("%s: iface_stat: malloc Failed", __FUNCTION__);
+                            status = WIFI_ERROR_OUT_OF_MEMORY;
+                            goto cleanup;
+                        }
+                        memset(mResultsParams.iface_stat, 0, resultsBufSize);
+                        status = get_wifi_interface_info(
+                                &mResultsParams.iface_stat->info, tb_vendor);
+                        if(status != WIFI_SUCCESS)
+                        {
+                            goto cleanup;
+                        }
+                        status = get_wifi_iface_stats(mResultsParams.iface_stat,
+                                tb_vendor);
+                        if(status != WIFI_SUCCESS)
+                        {
+                            goto cleanup;
+                        }
                     }
                 }
                 break;
@@ -1097,8 +1618,9 @@ int LLStatsCommand::handleResponse(WifiEvent &reply)
                 case QCA_NL80211_VENDOR_SUBCMD_LL_STATS_TYPE_PEERS:
                 {
                     struct nlattr *peerInfo;
-                    wifi_iface_stat *pIfaceStat = NULL;
-                    u32 numPeers, num_rates = 0;
+                    u32 numPeers, numRates = 0;
+                    bool isMlo = false;
+
                     if (!tb_vendor[
                             QCA_WLAN_VENDOR_ATTR_LL_STATS_IFACE_NUM_PEERS])
                     {
@@ -1137,6 +1659,9 @@ int LLStatsCommand::handleResponse(WifiEvent &reply)
                                     (struct nlattr *) nla_data(peerInfo),
                                     nla_len(peerInfo), NULL);
 
+                            if (tb2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID])
+                                isMlo = true;
+
                             if (!tb2[
                              QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO_NUM_RATES])
                             {
@@ -1146,73 +1671,151 @@ int LLStatsCommand::handleResponse(WifiEvent &reply)
                                 status = WIFI_ERROR_INVALID_ARGS;
                                 goto cleanup;
                             }
-                            num_rates += nla_get_u32(tb2[
+                            numRates += nla_get_u32(tb2[
                             QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO_NUM_RATES]);
                         }
-                        resultsBufSize += (numPeers * sizeof(wifi_peer_info)
-                                + num_rates * sizeof(wifi_rate_stat)
-                                + sizeof (wifi_iface_stat));
-                        pIfaceStat = (wifi_iface_stat *) malloc (
-                                resultsBufSize);
-                        if (!pIfaceStat)
-                        {
-                            ALOGE("%s: pIfaceStat: malloc Failed", __FUNCTION__);
-                            status = WIFI_ERROR_OUT_OF_MEMORY;
-                            goto cleanup;
-                        }
 
-                        memset(pIfaceStat, 0, resultsBufSize);
-                        if(mResultsParams.iface_stat) {
-                            if(resultsBufSize >= sizeof(wifi_iface_stat)) {
-                                memcpy ( pIfaceStat, mResultsParams.iface_stat,
-                                    sizeof(wifi_iface_stat));
-                                free (mResultsParams.iface_stat);
-                                mResultsParams.iface_stat = pIfaceStat;
-                            } else {
-                                ALOGE("%s: numPeers = %u, num_rates= %u, "
-                                      "either numPeers or num_rates is invalid",
-                                      __FUNCTION__,numPeers,num_rates);
-                                status = WIFI_ERROR_UNKNOWN;
-                                free(pIfaceStat);
+                        if (isMlo && mHandler.on_multi_link_stats_results) {
+                            wifi_peer_info *pPeerStats, *pMloPeerStats = NULL;
+                            u8 *pPeerLinkIDs = NULL;
+
+                            resultsBufSize = (numPeers * sizeof(wifi_peer_info)
+                                    + numRates * sizeof(wifi_rate_stat));
+
+                            pMloPeerStats = (wifi_peer_info *) malloc (resultsBufSize);
+                            pPeerLinkIDs = (u8 *) malloc (numPeers * sizeof(u8));
+
+                            if (!pMloPeerStats || !pPeerLinkIDs)
+                            {
+                                ALOGE("%s: pMloPeerStats or pPeerLinkIDs: "
+                                      "malloc Failed", __FUNCTION__);
+                                status = WIFI_ERROR_OUT_OF_MEMORY;
                                 goto cleanup;
                             }
-                        }
-                        wifi_peer_info *pPeerStats;
-                        pIfaceStat->num_peers = numPeers;
+#ifdef QC_HAL_DEBUG
+                            ALOGV("%s: numPeers %d, total numRates %d",
+                                  __FUNCTION__, numPeers, numRates);
+#endif
+                            memset(pMloPeerStats, 0, resultsBufSize);
+                            memset(pPeerLinkIDs, 0, (numPeers * sizeof(u8)));
 
-                        if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO])
-                        {
-                            ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO"
-                                  " not found", __FUNCTION__);
-                            status = WIFI_ERROR_INVALID_ARGS;
-                            goto cleanup;
-                        }
-                        num_rates = 0;
-                        for (peerInfo = (struct nlattr *) nla_data(tb_vendor[
-                            QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO]),
-                            rem = nla_len(tb_vendor[
-                                QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO]);
+                            mPeerResultsParams.link_ids = pPeerLinkIDs;
+                            mPeerResultsParams.peers_info = pMloPeerStats;
+                            mPeerResultsParams.num_peers = numPeers;
+                            mPeerResultsParams.num_rates = numRates;
+
+                            numRates = 0;
+                            numPeers = 0;
+                            for (peerInfo = (struct nlattr *) nla_data(tb_vendor[
+                                QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO]),
+                                rem = nla_len(tb_vendor[
+                                        QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO]);
                                 nla_ok(peerInfo, rem);
                                 peerInfo = nla_next(peerInfo, &(rem)))
-                        {
-                            struct nlattr *tb2[
-                                QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX+ 1];
-                            pPeerStats = (wifi_peer_info *) (
-                                           (u8 *)pIfaceStat->peer_info
-                                           + (i++ * sizeof(wifi_peer_info))
-                                           + (num_rates * sizeof(wifi_rate_stat)));
-                            nla_parse(tb2, QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX,
-                                (struct nlattr *) nla_data(peerInfo),
-                                nla_len(peerInfo), NULL);
-                            status = get_wifi_peer_info(pPeerStats, tb2);
-                            if(status != WIFI_SUCCESS)
                             {
+                                struct nlattr *tb2[
+                                    QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX+ 1];
+
+                                nla_parse(tb2, QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX,
+                                    (struct nlattr *) nla_data(peerInfo),
+                                    nla_len(peerInfo), NULL);
+
+                                if (numPeers >= mPeerResultsParams.num_peers) {
+                                    ALOGE("%s: Number of peers more than expected",
+                                          __FUNCTION__);
+                                    status = WIFI_ERROR_INVALID_ARGS;
+                                    goto cleanup;
+                                }
+                                if (tb2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID]){
+                                    pPeerLinkIDs[numPeers] =
+                                        nla_get_u8(tb2[QCA_WLAN_VENDOR_ATTR_LL_STATS_MLO_LINK_ID]);
+                                } else {
+                                    ALOGE("%s: No link id for peer in MLO "
+                                          "connection", __FUNCTION__);
+                                    status = WIFI_ERROR_INVALID_ARGS;
+                                    goto cleanup;
+                                }
+
+                                pPeerStats = (wifi_peer_info *) ((u8 *) pMloPeerStats
+                                               + (numPeers * sizeof(wifi_peer_info))
+                                               + (numRates * sizeof(wifi_rate_stat)));
+
+                                status = get_wifi_peer_info(pPeerStats, tb2);
+                                if(status != WIFI_SUCCESS)
+                                {
+                                    goto cleanup;
+                                }
+
+                                numRates += pPeerStats->num_rate;
+                                numPeers++;
+                            }
+                        } else {
+                            wifi_iface_stat *pIfaceStat;
+
+                            resultsBufSize += (numPeers * sizeof(wifi_peer_info)
+                                    + numRates * sizeof(wifi_rate_stat)
+                                    + sizeof (wifi_iface_stat));
+                            pIfaceStat = (wifi_iface_stat *) malloc (
+                                    resultsBufSize);
+                            if (!pIfaceStat)
+                            {
+                                ALOGE("%s: pIfaceStat: malloc Failed", __FUNCTION__);
+                                status = WIFI_ERROR_OUT_OF_MEMORY;
                                 goto cleanup;
                             }
-                            num_rates += pPeerStats->num_rate;
-                        }
-                    }
 
+                            memset(pIfaceStat, 0, resultsBufSize);
+                            if(mResultsParams.iface_stat) {
+                                if(resultsBufSize >= sizeof(wifi_iface_stat)) {
+                                    memcpy ( pIfaceStat, mResultsParams.iface_stat,
+                                        sizeof(wifi_iface_stat));
+                                    free (mResultsParams.iface_stat);
+                                    mResultsParams.iface_stat = pIfaceStat;
+                                } else {
+                                    ALOGE("%s: numPeers = %u, numRates= %u, "
+                                          "either numPeers or numRates is invalid",
+                                          __FUNCTION__,numPeers,numRates);
+                                    status = WIFI_ERROR_UNKNOWN;
+                                    free(pIfaceStat);
+                                    goto cleanup;
+                                }
+                            }
+                            wifi_peer_info *pPeerStats;
+                            pIfaceStat->num_peers = numPeers;
+
+                            if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO])
+                            {
+                                ALOGE("%s: QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO"
+                                      " not found", __FUNCTION__);
+                                status = WIFI_ERROR_INVALID_ARGS;
+                                goto cleanup;
+                            }
+                            numRates = 0;
+                            for (peerInfo = (struct nlattr *) nla_data(tb_vendor[
+                                QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO]),
+                                rem = nla_len(tb_vendor[
+                                    QCA_WLAN_VENDOR_ATTR_LL_STATS_PEER_INFO]);
+                                    nla_ok(peerInfo, rem);
+                                    peerInfo = nla_next(peerInfo, &(rem)))
+                            {
+                                struct nlattr *tb2[
+                                    QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX+ 1];
+                                pPeerStats = (wifi_peer_info *) (
+                                               (u8 *)pIfaceStat->peer_info
+                                               + (i++ * sizeof(wifi_peer_info))
+                                               + (numRates * sizeof(wifi_rate_stat)));
+                                nla_parse(tb2, QCA_WLAN_VENDOR_ATTR_LL_STATS_MAX,
+                                    (struct nlattr *) nla_data(peerInfo),
+                                    nla_len(peerInfo), NULL);
+                                status = get_wifi_peer_info(pPeerStats, tb2);
+                                if(status != WIFI_SUCCESS)
+                                {
+                                    goto cleanup;
+                                }
+                                numRates += pPeerStats->num_rate;
+                            }
+                        }
+                   }
                 }
                 break;
 
@@ -1261,6 +1864,32 @@ int LLStatsCommand::handleResponse(WifiEvent &reply)
             mClearRspParams.stop_rsp = nla_get_u32(tb_vendor[QCA_WLAN_VENDOR_ATTR_LL_STATS_CLR_CONFIG_STOP_RSP]);
             break;
         }
+
+        case QCA_NL80211_VENDOR_SUBCMD_MLO_LINK_STATE:
+        {
+            struct nlattr *tb_link_vendor[QCA_WLAN_VENDOR_ATTR_LINK_STATE_MAX + 1];
+            if (mResultsParams.iface_ml_stat) {
+                nla_parse(tb_link_vendor, QCA_WLAN_VENDOR_ATTR_LINK_STATE_MAX,
+                          (struct nlattr *)mVendorData,
+                           mDataLen, NULL);
+
+                if (!tb_link_vendor[QCA_WLAN_VENDOR_ATTR_LINK_STATE_CONFIG])
+                {
+                    ALOGE("%s: Link state config information missing",
+                           __FUNCTION__);
+                    return WIFI_ERROR_INVALID_ARGS;
+                }
+
+                status = get_wifi_ml_iface_link_states(mResultsParams.iface_ml_stat,
+                                                      tb_link_vendor);
+                if(status != WIFI_SUCCESS)
+                {
+                    goto cleanup;
+                }
+            }
+            break;
+        }
+
         default :
             ALOGE("%s: Wrong LLStats subcmd received %d", __FUNCTION__, mSubcmd);
     }
@@ -1387,18 +2016,51 @@ wifi_error wifi_get_link_stats(wifi_request_id id,
     LLCommand->attr_end(nl_data);
 
     ret = LLCommand->requestResponse();
-    if (ret != WIFI_SUCCESS)
-        ALOGE("%s: requestResponse Error:%d",__FUNCTION__, ret);
-
     if (ret != WIFI_SUCCESS) {
-        LLCommand->clearStats();
+        ALOGE("%s: requestResponse Error:%d",__FUNCTION__, ret);
         goto cleanup;
     }
 
-    if (ret == WIFI_SUCCESS)
-        ret = LLCommand->notifyResponse();
+    if (LLCommand->isMlo()) {
+        LLCommand->setSubCmd(QCA_NL80211_VENDOR_SUBCMD_MLO_LINK_STATE);
+
+        /* create the message */
+        ret = LLCommand->create();
+        if (ret != WIFI_SUCCESS)
+            goto cleanup;
+
+        ret = LLCommand->set_iface_id(iinfo->name);
+        if (ret != WIFI_SUCCESS)
+            goto cleanup;
+
+        /*add the attributes*/
+        nl_data = LLCommand->attr_start(NL80211_ATTR_VENDOR_DATA);
+        if (!nl_data){
+            ret = WIFI_ERROR_UNKNOWN;
+            goto cleanup;
+        }
+
+        ret = LLCommand->put_u32(QCA_WLAN_VENDOR_ATTR_LINK_STATE_OP_TYPE,
+                                 QCA_WLAN_VENDOR_LINK_STATE_OP_GET);
+        if (ret != WIFI_SUCCESS)
+            goto cleanup;
+        /**/
+        LLCommand->attr_end(nl_data);
+
+        ret = LLCommand->requestResponse();
+        if (ret != WIFI_SUCCESS) {
+            ALOGE("%s: requestResponse Error while fetching ML link state: %d",
+                  __FUNCTION__, ret);
+        }
+
+        ret = LLCommand->copyMloStats();
+        if (ret != WIFI_SUCCESS)
+            goto cleanup;
+     }
+     ret = LLCommand->notifyResponse();
 
 cleanup:
+    LLCommand->clearStats();
     return ret;
 }
 
