@@ -657,6 +657,8 @@ int NanCommand::getNanResponse(transaction_id *id, NanResponseMsg *pRsp)
                 mNanCommandInstance->mNanMaxSubscribes = pFwRsp->max_subscribes;
                 mNanCommandInstance->reallocSvcParams(NAN_ROLE_SUBSCRIBER);
             }
+            pRsp->body.nan_capabilities.is_pairing_supported = \
+                       pFwRsp->nan_pairing_supported;
 
             break;
         }
