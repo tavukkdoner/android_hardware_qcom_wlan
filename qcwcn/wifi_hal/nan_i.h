@@ -1544,6 +1544,7 @@ typedef struct PACKED
 } NanFWRangeReqRecvdInd, *pNanFWRangeReqRecvdInd;
 
 #define NIR_STR_LEN 3
+#define NAN_MAX_HASH_LEN 32
 
 typedef struct PACKED {
     u32 cipher_version;
