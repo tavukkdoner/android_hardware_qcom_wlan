@@ -580,7 +580,8 @@ wifi_error nan_bootstrapping_request(transaction_id id,
     if (entry) {
         entry->pub_sub_id = pub_sub_id;
         entry->requestor_instance_id = msg->requestor_instance_id;
-        entry->bootstrapping_instance_id = info->secure_nan->bootstrapping_id++;
+        info->secure_nan->bootstrapping_id++;
+        entry->bootstrapping_instance_id = info->secure_nan->bootstrapping_id;
         entry->peer_role = SECURE_NAN_BOOTSTRAPPING_RESPONDER;
     }
 
@@ -604,7 +605,6 @@ wifi_error nan_bootstrapping_indication_response(transaction_id id,
                                                  NanBootstrappingIndicationResponse* msg)
 {
     wifi_error ret;
-    u16 pub_sub_id;
     NanCommand *nanCommand;
     NanCommand *t_nanCommand;
     interface_info *ifaceInfo = getIfaceInfo(iface);
@@ -623,9 +623,6 @@ wifi_error nan_bootstrapping_indication_response(transaction_id id,
         return WIFI_ERROR_UNKNOWN;
     }
 
-    pub_sub_id = t_nanCommand->getPubSubId(msg->service_instance_id,
-                                           NAN_ROLE_PUBLISHER);
-
     nanCommand = new NanCommand(wifiHandle,
                                 0,
                                 OUI_QCA,
@@ -636,21 +633,6 @@ wifi_error nan_bootstrapping_indication_response(transaction_id id,
         ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
         return WIFI_ERROR_UNKNOWN;
     }
-    entry = nan_pairing_get_peer_from_list(info->secure_nan,
-                                           msg->peer_disc_mac_addr);
-    if (entry == NULL) {
-        ALOGE("%s: peer not found: ADDR=" MACSTR,
-              __FUNCTION__, MAC2STR(msg->peer_disc_mac_addr));
-    } else {
-        pub_sub_id = entry->pub_sub_id;
-    }
-
-
-    if (!pub_sub_id) {
-        ALOGI("%s: Using Global pubsub ID %d", __FUNCTION__,
-              info->secure_nan->pub_sub_id);
-        pub_sub_id = info->secure_nan->pub_sub_id;
-    }
 
     ret = nanCommand->create();
     if (ret != WIFI_SUCCESS)
@@ -660,7 +642,7 @@ wifi_error nan_bootstrapping_indication_response(transaction_id id,
     if (ret != WIFI_SUCCESS)
         goto cleanup;
 
-    ret = nanCommand->putNanBootstrappingIndicationRsp(id, msg, pub_sub_id);
+    ret = nanCommand->putNanBootstrappingIndicationRsp(id, msg);
     if (ret != WIFI_SUCCESS) {
         ALOGE("%s: putNanBootstrappingIndicationRsp Error:%d", __FUNCTION__, ret);
         goto cleanup;
@@ -674,8 +656,8 @@ wifi_error nan_bootstrapping_indication_response(transaction_id id,
 
            memset(&bootstrapConfirmInd, 0, sizeof(NanBootstrappingConfirmInd));
            bootstrapConfirmInd.bootstrapping_instance_id =
-                                  entry ? entry->bootstrapping_instance_id : 0;
-           bootstrapConfirmInd.rsp_code = NAN_BOOTSTRAPPING_REQUEST_ACCEPT;
+                                              msg->service_instance_id;
+           bootstrapConfirmInd.rsp_code = msg->rsp_code;
 
            nanCommand->handleNanBootstrappingConfirm(&bootstrapConfirmInd);
     }

@@ -615,8 +615,9 @@ int NanCommand::handleNanBootstrappingIndication()
 
            memset(&bootstrapReqInd, 0, sizeof(bootstrapReqInd));
            bootstrapReqInd.publish_subscribe_id = pRsp->fwHeader.handle;
+           info->secure_nan->bootstrapping_id++;
            bootstrapReqInd.bootstrapping_instance_id =
-                                         info->secure_nan->bootstrapping_id++;
+                                         info->secure_nan->bootstrapping_id;
            bootstrapReqInd.requestor_instance_id =
                                          pRsp->followupIndParams.matchHandle;
            memcpy(bootstrapReqInd.peer_disc_mac_addr, mac, NAN_MAC_ADDR_LEN);

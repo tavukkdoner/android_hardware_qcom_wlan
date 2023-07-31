@@ -1751,8 +1751,7 @@ wifi_error NanCommand::putNanBootstrappingReq(transaction_id id,
 }
 
 wifi_error NanCommand::putNanBootstrappingIndicationRsp(transaction_id id,
-                                const NanBootstrappingIndicationResponse *pRsp,
-                                u16 pub_sub_id)
+                                const NanBootstrappingIndicationResponse *pRsp)
 {
     wifi_error ret;
     struct nlattr *nl_data;
@@ -1783,11 +1782,19 @@ wifi_error NanCommand::putNanBootstrappingIndicationRsp(transaction_id id,
         cleanup();
         return WIFI_ERROR_OUT_OF_MEMORY;
     }
-    entry = nan_pairing_get_peer_from_list(info->secure_nan,
-                                           (u8 *)pRsp->peer_disc_mac_addr);
+
+#ifdef WPA_PASN_LIB
+    if (is_zero_ether_addr(pRsp->peer_disc_mac_addr)) {
+         entry = nan_pairing_get_peer_from_bootstrapping_id(info->secure_nan,
+                                                     pRsp->service_instance_id);
+    } else {
+         entry = nan_pairing_get_peer_from_list(info->secure_nan,
+                                                (u8 *)pRsp->peer_disc_mac_addr);
+    }
+#endif
     if (!entry) {
-        ALOGE(" %s :No Peer in pairing list, ADDR=" MACSTR,
-              __FUNCTION__, MAC2STR(pRsp->peer_disc_mac_addr));
+        ALOGE(" %s :No valid Peer in pairing list", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
     }
 
     ALOGV("Message Len %zu", message_len);
@@ -1795,18 +1802,18 @@ wifi_error NanCommand::putNanBootstrappingIndicationRsp(transaction_id id,
     pFwReq->fwHeader.msgVersion = (u16)NAN_MSG_VERSION1;
     pFwReq->fwHeader.msgId = NAN_MSG_ID_TRANSMIT_FOLLOWUP_REQ;
     pFwReq->fwHeader.msgLen = message_len;
-    pFwReq->fwHeader.handle = pub_sub_id;
+    pFwReq->fwHeader.handle = entry->pub_sub_id;
     pFwReq->fwHeader.transactionId = id;
 
-    pFwReq->transmitFollowupReqParams.matchHandle = pRsp->service_instance_id;
+    pFwReq->transmitFollowupReqParams.matchHandle = entry->requestor_instance_id;
     pFwReq->transmitFollowupReqParams.priority = 2;
     pFwReq->transmitFollowupReqParams.followupTxRspDisableFlag = 1;
     pFwReq->transmitFollowupReqParams.reserved = 0;
 
     u8* tlvs = pFwReq->ptlv;
 
-    tlvs = addTlv(NAN_TLV_TYPE_MAC_ADDRESS, sizeof(pRsp->peer_disc_mac_addr),
-                  (const u8*)&pRsp->peer_disc_mac_addr[0], tlvs);
+    tlvs = addTlv(NAN_TLV_TYPE_MAC_ADDRESS, sizeof(entry->bssid),
+                  (const u8*)&entry->bssid[0], tlvs);
 
     u16 tlv_type = NAN_TLV_TYPE_SERVICE_SPECIFIC_INFO;
 
