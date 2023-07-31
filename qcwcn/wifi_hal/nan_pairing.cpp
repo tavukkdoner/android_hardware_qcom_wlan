@@ -1126,10 +1126,10 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
     struct nan_pairing_peer_info *entry;
     wifi_handle handle = (wifi_handle)ctx;
     hal_info *info = getHalInfo(handle);
-    u8 tag[NAN_IDENTITY_TAG_LEN] = {0};
+    u8 tag[NAN_MAX_HASH_LEN];
     u8 data[NIR_STR_LEN + NAN_IDENTITY_NONCE_LEN + ETH_ALEN];
 
-    if (!info && !info->secure_nan) {
+    if (!info || !info->secure_nan) {
         ALOGE(" %s: HAL info or Secure NAN is NULL", __FUNCTION__);
         return -1;
     }
@@ -1141,6 +1141,7 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
         return -1;
     }
 
+    os_memset(tag, 0, sizeof(tag));
     os_memset(data, 0, sizeof(data));
     os_memcpy(data, "NIR", NIR_STR_LEN);
     os_memcpy(&data[NIR_STR_LEN], bssid, ETH_ALEN);
@@ -1567,7 +1568,7 @@ void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
     int ret;
     struct nanIDkey *nik;
     u8 data[NIR_STR_LEN + NAN_IDENTITY_NONCE_LEN + ETH_ALEN];
-    u8 tag[32];
+    u8 tag[NAN_MAX_HASH_LEN];
 
     if (!secure_nan || !secure_nan->dev_nik) {
         ALOGE("%s: Secure NAN device NIK Null ", __FUNCTION__);
