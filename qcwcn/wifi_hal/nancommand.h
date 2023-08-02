@@ -266,6 +266,8 @@ public:
     int handleNanBootstrappingConfirm(NanBootstrappingConfirmInd *evt);
     int handleNanPairingReqInd(NanPairingRequestInd *evt);
     int handleNanPairingConfirm(NanPairingConfirmInd *evt);
+    void notifyPairingInitiatorResponse(transaction_id id, u32 pairing_id);
+    void notifyPairingResponderResponse(transaction_id id, u32 pairing_id);
 };
 #endif /* __WIFI_HAL_NAN_COMMAND_H__ */
 

@@ -1686,6 +1686,10 @@ struct nan_pairing_peer_info {
     /* pasn data required for authentication */
     struct pasn_data pasn;
 #endif
+    /* is trans_id valid */
+    bool trans_id_valid;
+    /* current transaction ID */
+    transaction_id trans_id;
     /* publisg/subscribe ID received in auth frames */
     u16 pub_sub_id;
     /* requestor instance ID */
@@ -1814,6 +1818,8 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
                                       const u8 *pmkid);
 void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase,
                               u32 len);
+void nan_pairing_notify_initiator_response(wifi_handle handle, u8 *bssid);
+void nan_pairing_notify_responder_response(wifi_handle handle, u8 *bssid);
 int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len);
 int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
                                     int cipher, int akmp, int role);

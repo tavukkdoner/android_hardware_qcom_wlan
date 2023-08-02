@@ -73,6 +73,43 @@ int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
     return -1;
 }
 
+void NanCommand::notifyPairingInitiatorResponse(transaction_id id, u32 pairing_id)
+{
+    NanResponseMsg rsp_data;
+
+    if (mHandler.NotifyResponse) {
+        memset(&rsp_data, 0, sizeof(rsp_data));
+        rsp_data.status = NAN_STATUS_SUCCESS;
+        rsp_data.response_type = NAN_PAIRING_INITIATOR_RESPONSE;
+        rsp_data.body.pairing_request_response.paring_instance_id = pairing_id;
+        (*mHandler.NotifyResponse)(id, &rsp_data);
+    }
+}
+
+void nan_pairing_notify_initiator_response(wifi_handle handle, u8 *bssid)
+{
+    hal_info *info = getHalInfo(handle);
+    struct nan_pairing_peer_info *peer;
+    NanCommand *nanCommand = NULL;
+
+    nanCommand = NanCommand::instance(handle);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return;
+    }
+
+    peer = nan_pairing_get_peer_from_list(info->secure_nan, bssid);
+    if (!peer) {
+        ALOGE("nl80211: Peer not found in the pairing list");
+        return;
+    }
+
+    if (peer->trans_id_valid) {
+        nanCommand->notifyPairingInitiatorResponse(peer->trans_id,
+                                                   peer->pairing_instance_id);
+        peer->trans_id_valid = false;
+   }
+}
 
 /*  Function to trigger pairing setup or verification request */
 wifi_error nan_pairing_request(transaction_id id,
@@ -199,6 +236,9 @@ wifi_error nan_pairing_request(transaction_id id,
             return WIFI_ERROR_UNKNOWN;
         }
     }
+    peer->trans_id = id;
+    peer->trans_id_valid = true;
+
     return WIFI_SUCCESS;
 }
 
