@@ -186,6 +186,11 @@ wifi_error nan_pairing_indication_response(transaction_id id,
         return WIFI_ERROR_UNKNOWN;
     }
 
+    if (is_zero_ether_addr(nanCommand->getClusterAddr())) {
+        ALOGE("%s: Invalid Cluster Address", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
     peer = nan_pairing_get_peer_from_id(secure_nan, msg->pairing_instance_id);
     if (!peer && !peer->frame) {
         ALOGE("%s: no frame to process", __FUNCTION__);
