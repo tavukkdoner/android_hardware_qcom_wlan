@@ -4027,7 +4027,6 @@ void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
                                         pasn->cipher, pasn->akmp,
                                         SECURE_NAN_PAIRING_RESPONDER);
         wpa_pasn_reset(pasn);
-        peer->is_paired = true;
         return;
     }
 }
