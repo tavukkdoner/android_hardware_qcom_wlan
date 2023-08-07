@@ -1571,14 +1571,20 @@ void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase
     peer->pasn.password = peer->passphrase;
 }
 
-void nan_pairing_derive_grp_keys(struct wpa_secure_nan *secure_nan, u32 cipher_caps)
+void nan_pairing_derive_grp_keys(hal_info *info, u8* addr, u32 cipher_caps)
 {
     int groupMfp;
     int len = 0;
     struct nanGrpKey *grp_key;
+    struct wpa_secure_nan *secure_nan = info->secure_nan;
 
     if (!secure_nan) {
         ALOGE("%s: Secure NAN Null ", __FUNCTION__);
+        return;
+    }
+
+    if (!addr || is_zero_ether_addr(addr)) {
+        ALOGE("%s: Invalid NMI Address", __FUNCTION__);
         return;
     }
 
@@ -1607,20 +1613,37 @@ void nan_pairing_derive_grp_keys(struct wpa_secure_nan *secure_nan, u32 cipher_c
         goto fail;
     }
 
-    if (grp_key->igtk_len && random_get_bytes(grp_key->igtk,
-                                              grp_key->igtk_len) < 0) {
-        ALOGE("%s: Get random IGTK Failed", __FUNCTION__);
+    if (grp_key->igtk_len == NAN_CSIA_GRPKEY_LEN_16) {
+        if (random_get_bytes(grp_key->igtk, grp_key->igtk_len) < 0) {
+            ALOGE("%s: Get random IGTK Failed", __FUNCTION__);
+            goto fail;
+        }
+        if (nan_pairing_set_key(info, WPA_CIPHER_GCMP, addr, NAN_IGTK_KEY_IDX, 1,
+                                NULL, 0, grp_key->igtk, grp_key->igtk_len,
+                                KEY_FLAG_GROUP_RX)) {
+             ALOGE("%s: set pairing key IGTK failed", __FUNCTION__);
+             goto fail;
+        }
+    } else {
+        ALOGE("%s: unsupported IGTK len %d", __FUNCTION__, grp_key->igtk_len);
         goto fail;
     }
 
-    if (grp_key->bigtk_len && random_get_bytes(grp_key->bigtk,
-                                               grp_key->bigtk_len) < 0) {
-        ALOGE("%s: Get random BIGTK Failed", __FUNCTION__);
+    if (grp_key->bigtk_len == NAN_CSIA_GRPKEY_LEN_16) {
+        if (random_get_bytes(grp_key->bigtk, grp_key->bigtk_len) < 0) {
+            ALOGE("%s: Get random BIGTK Failed", __FUNCTION__);
+            goto fail;
+        }
+        if (nan_pairing_set_key(info, WPA_CIPHER_GCMP, addr, NAN_BIGTK_KEY_IDX, 1,
+                                NULL, 0, grp_key->bigtk, grp_key->bigtk_len,
+                                KEY_FLAG_GROUP_RX)) {
+             ALOGE("%s: set pairing key BIGTK failed", __FUNCTION__);
+             goto fail;
+        }
+    } else {
+        ALOGE("%s: unsupported BIGTK len %d", __FUNCTION__, grp_key->bigtk_len);
         goto fail;
     }
-
-    wpa_hexdump(MSG_INFO, "PASN: IGTK ", grp_key->igtk, grp_key->igtk_len);
-    wpa_hexdump(MSG_INFO, "PASN: BIGTK ", grp_key->bigtk, grp_key->bigtk_len);
 
     grp_key->igtk_life_time = GrpKeyLifetime;
     grp_key->bigtk_life_time = GrpKeyLifetime;

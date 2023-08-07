@@ -227,6 +227,7 @@ wifi_error nan_publish_request(transaction_id id,
 {
     wifi_error ret;
     NanCommand *nanCommand = NULL;
+    NanCommand *t_nanCommand = NULL;
     interface_info *ifaceInfo = getIfaceInfo(iface);
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
@@ -234,6 +235,12 @@ wifi_error nan_publish_request(transaction_id id,
 
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    t_nanCommand = NanCommand::instance(wifiHandle);
+    if (t_nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand Instance NULL", __FUNCTION__);
         return WIFI_ERROR_UNKNOWN;
     }
 
@@ -248,7 +255,7 @@ wifi_error nan_publish_request(transaction_id id,
               msg->nan_pairing_config.supported_bootstrapping_methods;
 #ifdef WPA_PASN_LIB
         if (!info->secure_nan->dev_grp_keys)
-            nan_pairing_derive_grp_keys(info->secure_nan,
+            nan_pairing_derive_grp_keys(info, t_nanCommand->getNmi(),
                                         msg->cipher_capabilities);
         grp_keys = info->secure_nan->dev_grp_keys;
 #endif
@@ -349,6 +356,7 @@ wifi_error nan_subscribe_request(transaction_id id,
 {
     wifi_error ret;
     NanCommand *nanCommand = NULL;
+    NanCommand *t_nanCommand = NULL;
     interface_info *ifaceInfo = getIfaceInfo(iface);
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
@@ -356,6 +364,12 @@ wifi_error nan_subscribe_request(transaction_id id,
 
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    t_nanCommand = NanCommand::instance(wifiHandle);
+    if (t_nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand Instance NULL", __FUNCTION__);
         return WIFI_ERROR_UNKNOWN;
     }
 
@@ -370,7 +384,7 @@ wifi_error nan_subscribe_request(transaction_id id,
               msg->nan_pairing_config.supported_bootstrapping_methods;
 #ifdef WPA_PASN_LIB
         if (!info->secure_nan->dev_grp_keys)
-            nan_pairing_derive_grp_keys(info->secure_nan,
+            nan_pairing_derive_grp_keys(info, t_nanCommand->getNmi(),
                                         msg->cipher_capabilities);
         grp_keys = info->secure_nan->dev_grp_keys;
 #endif
