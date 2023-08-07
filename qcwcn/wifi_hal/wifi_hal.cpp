@@ -534,7 +534,7 @@ static wifi_error wifi_init_user_sock(hal_info *info)
 
 static wifi_error wifi_init_cld80211_sock_cb(hal_info *info)
 {
-    struct nl_cb *cb = nl_socket_get_cb(info->cldctx->sock);
+    struct nl_cb *cb = nl_socket_get_cb(info->user_sock);
     if (cb == NULL) {
         ALOGE("Could not get cb");
         return WIFI_ERROR_UNKNOWN;
@@ -1252,7 +1252,11 @@ wifi_error wifi_initialize(wifi_handle *handle)
 
     info->cldctx = cld80211_init();
     if (info->cldctx != NULL) {
-        info->user_sock = info->cldctx->sock;
+        info->user_sock = cld80211_get_nl_socket_ctx(info->cldctx);
+        if (!info->user_sock) {
+            ALOGE("cld sock is NULL");
+            goto cld80211_cleanup;
+        }
         ret = wifi_init_cld80211_sock_cb(info);
         if (ret != WIFI_SUCCESS) {
             ALOGE("Could not set cb for CLD80211 family");

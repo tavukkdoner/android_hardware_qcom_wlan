@@ -154,7 +154,6 @@ enum pkt_log_version {
 
 struct gscan_event_handlers_s;
 struct rssi_monitor_event_handler_s;
-struct cld80211_ctx;
 struct wpa_secure_nan;
 
 struct ctrl_sock {
@@ -221,7 +220,7 @@ typedef struct hal_info_s {
     struct rssi_monitor_event_handler_s *rssi_handlers;
     struct radio_event_handler_s *radio_handlers;
     wifi_capa capa;
-    struct cld80211_ctx *cldctx;
+    void *cldctx;
     bool apf_enabled;
     bool support_nan_ext_cmd;
     pkt_log_version  pkt_log_ver;
