@@ -37,7 +37,7 @@ include $(BUILD_HEADER_LIBRARY)
 # ============================================================
 include $(CLEAR_VARS)
 
-NAN_PAIRING=n
+NAN_PAIRING=y
 
 LOCAL_CFLAGS := -Wno-unused-parameter
 ifeq ($(TARGET_BUILD_VARIANT),userdebug)

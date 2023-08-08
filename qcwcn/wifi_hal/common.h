@@ -88,6 +88,7 @@
 #define DEFAULT_EVENT_CB_SIZE   (64)
 #define NUM_RING_BUFS           5
 #define MAX_NUM_RADAR_HISTORY   64
+#define MAX_NUM_MLO_LINKS       15
 
 #define WIFI_HAL_CTRL_IFACE     "/dev/socket/wifihal/wifihal_ctrlsock"
 
