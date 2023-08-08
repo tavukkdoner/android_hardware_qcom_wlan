@@ -230,15 +230,23 @@ wifi_error nan_pairing_indication_response(transaction_id id,
     }
 
     peer = nan_pairing_get_peer_from_id(secure_nan, msg->pairing_instance_id);
-    if (!peer && !peer->frame) {
-        ALOGE("%s: no frame to process", __FUNCTION__);
+    if (!peer) {
+        ALOGE("%s: peer not found, pairing id: %d", __FUNCTION__,
+              msg->pairing_instance_id);
         return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    if (!peer->frame) {
+        ALOGE("%s: no auth frame to process", __FUNCTION__);
+        peer->is_pairing_in_progress = false;
+        return WIFI_ERROR_UNKNOWN;
     }
 
     pasn = &peer->pasn;
 
     if (msg->rsp_code == NAN_PAIRING_REQUEST_REJECT) {
         ALOGE("%s: received reject rsp", __FUNCTION__);
+        peer->is_pairing_in_progress = false;
         return WIFI_ERROR_UNKNOWN;
     }
 
@@ -278,6 +286,7 @@ wifi_error nan_pairing_indication_response(transaction_id id,
         ALOGE("%s: Handle auth pasn 1 failed", __FUNCTION__);
         wpa_pasn_reset(pasn);
         peer->peer_role = SECURE_NAN_IDLE;
+        goto fail;
     }
     free(peer->frame);
     peer->frame = NULL;
@@ -287,6 +296,7 @@ wifi_error nan_pairing_indication_response(transaction_id id,
 fail:
     free(peer->frame);
     peer->frame = NULL;
+    peer->is_pairing_in_progress = false;
     return WIFI_ERROR_UNKNOWN;
 }
 
@@ -346,9 +356,9 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
                          len - offsetof(struct ieee80211_mgmt, u.auth.variable),
                          NAN_ATTR_ID_NIRA);
 
+        entry = nan_pairing_get_peer_from_list(info->secure_nan,
+                                               (u8 *)mgmt->sa);
         if (nan_attr_ie) {
-            entry = nan_pairing_get_peer_from_list(info->secure_nan,
-                                                   (u8 *)mgmt->sa);
             if (!entry || !entry->is_paired) {
                 ALOGI("PASN Responder: NIRA present, but peer entry not found");
                 return WIFI_ERROR_UNKNOWN;
@@ -362,7 +372,16 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
             bootstrap = entry->peer_supported_bootstrap;
         }
 
+        if (entry && entry->is_pairing_in_progress) {
+            ALOGV("PASN Responder: Drop PASN M1 frame as Pairing in progress");
+            return WIFI_ERROR_UNKNOWN;
+        }
+
         entry = nan_pairing_add_peer_to_list(info->secure_nan, (u8 *)mgmt->sa);
+        if (!entry) {
+            ALOGE("PASN Responder: Unable to add peer");
+            return WIFI_ERROR_UNKNOWN;
+        }
 
         if (data && (len < MAX_FRAME_LEN_80211_MGMT)) {
             entry->frame = (struct pasn_auth_frame *)malloc(sizeof(struct pasn_auth_frame));
@@ -371,6 +390,7 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
                 entry->frame->len = len;
             }
         }
+        entry->is_pairing_in_progress = true;
 
         nan_attr_ie = nan_get_attr_from_ies(mgmt->u.auth.variable,
                          len - offsetof(struct ieee80211_mgmt, u.auth.variable),

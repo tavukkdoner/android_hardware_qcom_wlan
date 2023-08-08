@@ -1716,6 +1716,8 @@ struct nan_pairing_peer_info {
     char *passphrase;
     /* sae password id to derive pt */
     char *sae_password_id;
+    /* flag to check if pairing in progress with same peer */
+    bool is_pairing_in_progress;
     /* flag to check if peer is paired */
     bool is_paired;
     /* capability info in DCEA attribute */
