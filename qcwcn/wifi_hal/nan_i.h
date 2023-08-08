@@ -1698,6 +1698,8 @@ struct nan_pairing_peer_info {
     u32 bootstrapping_instance_id;
     /* pairing instance ID local to the device */
     u32 pairing_instance_id;
+    /* ndp ID of latest instance */
+    u32 ndp_instance_id;
     /* bssid of pairing peer */
     u8 bssid[NAN_MAC_ADDR_LEN];
     /* current role of the peer based on the handshake frame received */
@@ -1791,6 +1793,9 @@ nan_pairing_get_peer_from_id(struct wpa_secure_nan *secure_nan, u32 pairing_id);
 struct nan_pairing_peer_info*
 nan_pairing_get_peer_from_bootstrapping_id(struct wpa_secure_nan *secure_nan,
                                            u32 bootstrapping_id);
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_ndp_id(struct wpa_secure_nan *secure_nan,
+                                 u32 ndp_instance_id);
 void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan);
 void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
                                        u8 *mac);
