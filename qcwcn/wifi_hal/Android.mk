@@ -138,6 +138,7 @@ LOCAL_VENDOR_MODULE := true
 LOCAL_CLANG := true
 LOCAL_SHARED_LIBRARIES += libnetutils liblog libcld80211
 LOCAL_SHARED_LIBRARIES += libcrypto
+LOCAL_SHARED_LIBRARIES += libcutils
 ifeq ($(NAN_PAIRING),y)
 ifeq ($(CONFIG_PASN),y)
 LOCAL_SHARED_LIBRARIES += libpasn
@@ -262,6 +263,7 @@ LOCAL_SHARED_LIBRARIES += libnetutils liblog
 LOCAL_SHARED_LIBRARIES += libdl libcld80211
 LOCAL_SHARED_LIBRARIES += libwifi-hal-ctrl
 LOCAL_SHARED_LIBRARIES += libcrypto
+LOCAL_SHARED_LIBRARIES += libcutils
 ifeq ($(NAN_PAIRING),y)
 ifeq ($(CONFIG_PASN),y)
 LOCAL_SHARED_LIBRARIES += libpasn
