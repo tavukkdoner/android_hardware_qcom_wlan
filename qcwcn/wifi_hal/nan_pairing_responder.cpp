@@ -151,6 +151,44 @@ static void nan_pairing_responder_start(hal_info *info, u8 *peer_addr,
     return;
 }
 
+void NanCommand::notifyPairingResponderResponse(transaction_id id, u32 pairing_id)
+{
+    NanResponseMsg rsp_data;
+
+    if (mHandler.NotifyResponse) {
+        memset(&rsp_data, 0, sizeof(rsp_data));
+        rsp_data.status = NAN_STATUS_SUCCESS;
+        rsp_data.response_type = NAN_PAIRING_RESPONDER_RESPONSE;
+        rsp_data.body.pairing_request_response.paring_instance_id = pairing_id;
+        (*mHandler.NotifyResponse)(id, &rsp_data);
+    }
+}
+
+void nan_pairing_notify_responder_response(wifi_handle handle, u8 *bssid)
+{
+    hal_info *info = getHalInfo(handle);
+    struct nan_pairing_peer_info *peer;
+    NanCommand *nanCommand = NULL;
+
+    nanCommand = NanCommand::instance(handle);
+    if (nanCommand == NULL) {
+        ALOGE("%s: Error NanCommand NULL", __FUNCTION__);
+        return;
+    }
+
+    peer = nan_pairing_get_peer_from_list(info->secure_nan, bssid);
+    if (!peer) {
+        ALOGE("nl80211: Peer not found in the pairing list");
+        return;
+    }
+
+    if (peer->trans_id_valid) {
+        nanCommand->notifyPairingResponderResponse(peer->trans_id,
+                                                   peer->pairing_instance_id);
+        peer->trans_id_valid = false;
+   }
+}
+
 wifi_error nan_pairing_indication_response(transaction_id id,
                                            wifi_interface_handle iface,
                                            NanPairingIndicationResponse* msg)
@@ -232,6 +270,8 @@ wifi_error nan_pairing_indication_response(transaction_id id,
     } else {
         pasn->akmp = WPA_KEY_MGMT_PASN;
     }
+    peer->trans_id = id;
+    peer->trans_id_valid = true;
     ret = handle_auth_pasn_1(pasn, pasn->own_addr, (u8 *)mgmt->sa, mgmt,
                              peer->frame->len);
     if (ret == -1) {

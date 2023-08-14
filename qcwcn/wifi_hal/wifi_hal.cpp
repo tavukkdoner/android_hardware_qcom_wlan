@@ -4019,6 +4019,11 @@ void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
 
     pasn = &peer->pasn;
 
+    if (mgmt->u.auth.auth_transaction == 1)
+        nan_pairing_notify_initiator_response(handle, (u8 *)mgmt->da);
+    else if (mgmt->u.auth.auth_transaction == 2)
+        nan_pairing_notify_responder_response(handle, (u8 *)mgmt->da);
+
     ALOGV("nl80211: Authentication frame TX status: ack=%d", !!ack);
     ret = wpa_pasn_auth_tx_status(pasn, frame, len, ack != NULL);
     if (ret == 1) {
