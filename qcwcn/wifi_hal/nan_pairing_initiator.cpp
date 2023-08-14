@@ -106,6 +106,11 @@ wifi_error nan_pairing_request(transaction_id id,
         return WIFI_ERROR_UNKNOWN;
     }
 
+    if (is_zero_ether_addr(nanCommand->getClusterAddr())) {
+        ALOGE("%s: Invalid Cluster Address", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
     secure_nan = info->secure_nan;
     if (msg->nan_pairing_request_type == NAN_PAIRING_SETUP) {
         peer = nan_pairing_add_peer_to_list(secure_nan,
