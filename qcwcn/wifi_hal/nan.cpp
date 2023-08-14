@@ -1686,6 +1686,7 @@ wifi_error nan_data_indication_response(transaction_id id,
     hal_info *info = getHalInfo(wifiHandle);
 #ifdef WPA_PASN_LIB
     struct ptksa_cache_entry *entry = NULL;
+    struct nan_pairing_peer_info *peer = NULL;
 #endif
 
     if (msg == NULL)
@@ -1704,17 +1705,26 @@ wifi_error nan_data_indication_response(transaction_id id,
 
 #ifdef WPA_PASN_LIB
     if (info && info->secure_nan) {
+        if (is_zero_ether_addr(msg->peer_disc_mac_addr)) {
+            peer = nan_pairing_get_peer_from_ndp_id(info->secure_nan,
+                                                    msg->ndp_instance_id);
+            if (peer)
+                memcpy(msg->peer_disc_mac_addr, peer->bssid, NAN_MAC_ADDR_LEN);
+        }
         entry = ptksa_cache_get(info->secure_nan->ptksa,
                                 msg->peer_disc_mac_addr, WPA_CIPHER_NONE);
         if (entry) {
             msg->cipher_type = NAN_CIPHER_SUITE_SHARED_KEY_128_MASK;
 
             nan_pasn_kdk_to_ndp_pmk(entry->ptk.kdk, entry->ptk.kdk_len,
-                                    entry->own_addr, entry->addr,
+                                    entry->addr, entry->own_addr,
                                     msg->key_info.body.pmk_info.pmk,
                                     &msg->key_info.body.pmk_info.pmk_len);
 
             msg->key_info.key_type = NAN_SECURITY_KEY_INPUT_PMK;
+        } else {
+            ALOGE("%s: Entry not found in cache for ADDR=" MACSTR,
+                  __FUNCTION__, MAC2STR(msg->peer_disc_mac_addr));
         }
     }
 #endif

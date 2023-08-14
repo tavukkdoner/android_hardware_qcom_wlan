@@ -100,6 +100,19 @@ nan_pairing_get_peer_from_bootstrapping_id(struct wpa_secure_nan *secure_nan,
     return NULL;
 }
 
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_ndp_id(struct wpa_secure_nan *secure_nan,
+                                 u32 ndp_instance_id)
+{
+    struct nan_pairing_peer_info *entry;
+
+    list_for_each_entry(entry, &secure_nan->peers, list) {
+       if (entry->ndp_instance_id == ndp_instance_id)
+           return entry;
+    }
+    return NULL;
+}
+
 void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan)
 {
     struct nan_pairing_peer_info *entry, *tmp;

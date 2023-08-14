@@ -1425,6 +1425,8 @@ int NanCommand::getNdpRequest(struct nlattr **tb_vendor,
                               NanDataPathRequestInd *event)
 {
     u32 len = 0;
+    hal_info *info = getHalInfo(wifiHandle());
+    struct nan_pairing_peer_info *peer = NULL;
 
     if (event == NULL || tb_vendor == NULL) {
         ALOGE("%s: Invalid input argument event:%p tb_vendor:%p",
@@ -1463,6 +1465,12 @@ int NanCommand::getNdpRequest(struct nlattr **tb_vendor,
                                                NAN_ROLE_PUBLISHER);
     } else {
         ALOGD("%s: Service ID not present", __FUNCTION__);
+    }
+
+    if (info && info->secure_nan) {
+        peer = nan_pairing_get_peer_from_list(info->secure_nan, event->peer_disc_mac_addr);
+        if (peer)
+            peer->ndp_instance_id = event->ndp_instance_id;
     }
 
     return WIFI_SUCCESS;
