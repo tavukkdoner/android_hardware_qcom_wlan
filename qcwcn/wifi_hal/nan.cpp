@@ -536,6 +536,7 @@ wifi_error nan_bootstrapping_request(transaction_id id,
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
     struct nan_pairing_peer_info *entry;
+    NanResponseMsg rsp_data;
 
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
@@ -588,6 +589,13 @@ wifi_error nan_bootstrapping_request(transaction_id id,
     if (msg->request_bootstrapping_method)
         info->secure_nan->supported_bootstrap = msg->request_bootstrapping_method;
 
+    memset(&rsp_data, 0, sizeof(rsp_data));
+    rsp_data.response_type = NAN_BOOTSTRAPPING_INITIATOR_RESPONSE;
+    rsp_data.status = NAN_STATUS_SUCCESS;
+    rsp_data.body.bootstrapping_request_response.bootstrapping_instance_id =
+                                             info->secure_nan->bootstrapping_id;
+    t_nanCommand->saveNanResponseMsg(id, rsp_data);
+
     ret = nanCommand->requestEvent();
     if (ret != WIFI_SUCCESS) {
         ALOGE("%s: requestEvent Error:%d", __FUNCTION__, ret);
@@ -611,6 +619,7 @@ wifi_error nan_bootstrapping_indication_response(transaction_id id,
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
     struct nan_pairing_peer_info *entry;
+    NanResponseMsg rsp_data;
 
     if (info == NULL) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
@@ -648,18 +657,16 @@ wifi_error nan_bootstrapping_indication_response(transaction_id id,
         goto cleanup;
     }
 
+    memset(&rsp_data, 0, sizeof(rsp_data));
+    rsp_data.response_type = NAN_BOOTSTRAPPING_RESPONDER_RESPONSE;
+    rsp_data.status = NAN_STATUS_SUCCESS;
+    rsp_data.body.bootstrapping_request_response.bootstrapping_instance_id =
+                                                      msg->service_instance_id;
+    t_nanCommand->saveNanResponseMsg(id, rsp_data);
+
     ret = nanCommand->requestEvent();
     if (ret != WIFI_SUCCESS) {
         ALOGE("%s: requestEvent Error:%d", __FUNCTION__, ret);
-    } else {
-           NanBootstrappingConfirmInd bootstrapConfirmInd;
-
-           memset(&bootstrapConfirmInd, 0, sizeof(NanBootstrappingConfirmInd));
-           bootstrapConfirmInd.bootstrapping_instance_id =
-                                              msg->service_instance_id;
-           bootstrapConfirmInd.rsp_code = msg->rsp_code;
-
-           nanCommand->handleNanBootstrappingConfirm(&bootstrapConfirmInd);
     }
 
 cleanup:
@@ -2336,6 +2343,38 @@ void NanCommand::deallocSvcParams()
         mStoreSubParams = NULL;
         ALOGV("%s: Deallocated Subscribe pool", __FUNCTION__);
     }
+}
+
+void NanCommand::saveNanResponseMsg(transaction_id id, NanResponseMsg &msg)
+{
+    mNanResponseMsgVec.push_back(std::make_pair(id, msg));
+}
+
+int NanCommand::getNanResponseMsg(transaction_id id, NanResponseMsg *msg)
+{
+    NanResponseMsg *localMsg;
+
+    for (int i = 0; i < mNanResponseMsgVec.size(); i++) {
+         if (mNanResponseMsgVec[i].first == id) {
+             localMsg = &mNanResponseMsgVec[i].second;
+             msg->status = localMsg->status;
+             msg->response_type = localMsg->response_type;
+
+             switch (msg->response_type) {
+             case NAN_BOOTSTRAPPING_INITIATOR_RESPONSE:
+             case NAN_BOOTSTRAPPING_RESPONDER_RESPONSE:
+                 msg->body.bootstrapping_request_response.bootstrapping_instance_id =
+                 localMsg->body.bootstrapping_request_response.bootstrapping_instance_id;
+                 break;
+             default:
+                 ALOGV("%s: Invalid response type: %d", __FUNCTION__, msg->response_type);
+                 break;
+             }
+             mNanResponseMsgVec.erase(mNanResponseMsgVec.begin() + i);
+             return 0;
+         }
+    }
+    return -1;
 }
 
 /* Save NAN transaction ID for ndi delete command */
