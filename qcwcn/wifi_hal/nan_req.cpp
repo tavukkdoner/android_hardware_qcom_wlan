@@ -1045,9 +1045,9 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
     }
 
     if (pReq->cipher_capabilities) {
-        u8 caps = (pReq->cipher_capabilities & 0x3) << 1;
+        u8 caps = pReq->cipher_capabilities;
         ALOGV("%s: cipher capabilities :%d",__func__, caps);
-          tlvs = addTlv(NAN_TLV_TYPE_DEV_CAP_ATTR_CAPABILITY, sizeof(u8),
+          tlvs = addTlv(NAN_TLV_TYPE_CSIA_CAP, sizeof(u8),
                         (const u8*)&caps, tlvs);
     }
 
@@ -1425,9 +1425,9 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
     }
 
     if (pReq->cipher_capabilities) {
-        u8 caps = (pReq->cipher_capabilities & 0x3) << 1;
+        u8 caps = pReq->cipher_capabilities;
         ALOGI("%s: cipher capabilities :%d",__func__, caps);
-        tlvs = addTlv(NAN_TLV_TYPE_DEV_CAP_ATTR_CAPABILITY, sizeof(u8),
+        tlvs = addTlv(NAN_TLV_TYPE_CSIA_CAP, sizeof(u8),
                           (const u8*)&caps, tlvs);
     }
 
