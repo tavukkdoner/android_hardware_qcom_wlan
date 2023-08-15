@@ -1762,6 +1762,11 @@ int secure_nan_init(wifi_interface_handle iface)
 
     secure_nan = (struct wpa_secure_nan *)os_zalloc(sizeof(*secure_nan));
 
+    if (!secure_nan) {
+        ALOGE("%s: Memory allocation failed \n", __FUNCTION__);
+        return -1;
+    }
+
     if (eloop_init()) {
         ALOGE("Secure NAN eloop init failed");
         return -1;
