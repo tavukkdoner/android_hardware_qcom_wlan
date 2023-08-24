@@ -1686,6 +1686,10 @@ struct nan_pairing_peer_info {
     /* pasn data required for authentication */
     struct pasn_data pasn;
 #endif
+    /* is trans_id valid */
+    bool trans_id_valid;
+    /* current transaction ID */
+    transaction_id trans_id;
     /* publisg/subscribe ID received in auth frames */
     u16 pub_sub_id;
     /* requestor instance ID */
@@ -1694,6 +1698,8 @@ struct nan_pairing_peer_info {
     u32 bootstrapping_instance_id;
     /* pairing instance ID local to the device */
     u32 pairing_instance_id;
+    /* ndp ID of latest instance */
+    u32 ndp_instance_id;
     /* bssid of pairing peer */
     u8 bssid[NAN_MAC_ADDR_LEN];
     /* current role of the peer based on the handshake frame received */
@@ -1710,6 +1716,8 @@ struct nan_pairing_peer_info {
     char *passphrase;
     /* sae password id to derive pt */
     char *sae_password_id;
+    /* flag to check if pairing in progress with same peer */
+    bool is_pairing_in_progress;
     /* flag to check if peer is paired */
     bool is_paired;
     /* capability info in DCEA attribute */
@@ -1784,6 +1792,12 @@ struct nan_pairing_peer_info*
 nan_pairing_get_peer_from_list(struct wpa_secure_nan *secure_nan, u8 *mac);
 struct nan_pairing_peer_info*
 nan_pairing_get_peer_from_id(struct wpa_secure_nan *secure_nan, u32 pairing_id);
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_bootstrapping_id(struct wpa_secure_nan *secure_nan,
+                                           u32 bootstrapping_id);
+struct nan_pairing_peer_info*
+nan_pairing_get_peer_from_ndp_id(struct wpa_secure_nan *secure_nan,
+                                 u32 ndp_instance_id);
 void nan_pairing_delete_list(struct wpa_secure_nan *secure_nan);
 void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
                                        u8 *mac);
@@ -1811,6 +1825,8 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
                                       const u8 *pmkid);
 void nan_pairing_set_password(struct nan_pairing_peer_info *peer, u8 *passphrase,
                               u32 len);
+void nan_pairing_notify_initiator_response(wifi_handle handle, u8 *bssid);
+void nan_pairing_notify_responder_response(wifi_handle handle, u8 *bssid);
 int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len);
 int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
                                     int cipher, int akmp, int role);
@@ -1827,8 +1843,7 @@ int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
 int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
-void nan_pairing_derive_grp_keys(struct wpa_secure_nan *secure_nan,
-                                 u32 cipher_caps);
+void nan_pairing_derive_grp_keys(hal_info *info, u8* addr, u32 cipher_caps);
 
 #ifdef __cplusplus
 }

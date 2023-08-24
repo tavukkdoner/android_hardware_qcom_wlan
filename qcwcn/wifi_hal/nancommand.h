@@ -56,6 +56,8 @@
 #include "wifi_hal.h"
 #include "nan_cert.h"
 #include <queue>
+#include <utility>
+#include <vector>
 
 /*
  * NAN Salt is a concatenation of salt_version, CSID, Service ID, PeerMac
@@ -109,6 +111,7 @@ private:
     NanStoreSvcParams *mStoreSubParams;
     bool mNanDiscAddrIndDisabled;
     std::queue<transaction_id> mNdiTransactionId;
+    std::vector<std::pair<transaction_id, NanResponseMsg> > mNanResponseMsgVec;
 
     //Function to check the initial few bytes of data to
     //determine whether NanResponse or NanEvent
@@ -225,8 +228,7 @@ public:
                                       const NanBootstrappingRequest *pReq,
                                       u16 pub_sub_id);
     wifi_error putNanBootstrappingIndicationRsp(transaction_id id,
-                                const NanBootstrappingIndicationResponse *pRsp,
-                                      u16 pub_sub_id);
+                                const NanBootstrappingIndicationResponse *pRsp);
     wifi_error putNanIdentityResolutionParams(transaction_id id,
                                               NanNIRARequest *pReq);
     wifi_error putNanSharedKeyDescriptorReq(transaction_id id,
@@ -257,11 +259,15 @@ public:
     void deallocSvcParams();
     void saveTransactionId(transaction_id id);
     transaction_id getTransactionId();
+    void saveNanResponseMsg(transaction_id id, NanResponseMsg &msg);
+    int getNanResponseMsg(transaction_id id, NanResponseMsg *msg);
     /* Functions for NAN Bootstrapping and Pairing */
     int handleNanBootstrappingReqInd(NanBootstrappingRequestInd  *evt);
     int handleNanBootstrappingConfirm(NanBootstrappingConfirmInd *evt);
     int handleNanPairingReqInd(NanPairingRequestInd *evt);
     int handleNanPairingConfirm(NanPairingConfirmInd *evt);
+    void notifyPairingInitiatorResponse(transaction_id id, u32 pairing_id);
+    void notifyPairingResponderResponse(transaction_id id, u32 pairing_id);
 };
 #endif /* __WIFI_HAL_NAN_COMMAND_H__ */
 

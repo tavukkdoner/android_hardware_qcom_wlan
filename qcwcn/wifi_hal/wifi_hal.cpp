@@ -1111,6 +1111,11 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn) {
     fn->wifi_get_supported_iface_concurrency_matrix =
                                 wifi_get_supported_iface_concurrency_matrix;
 #endif /* TARGET_SUPPORTS_WEARABLES */
+    fn->wifi_nan_pairing_request = nan_pairing_request;
+    fn->wifi_nan_pairing_indication_response = nan_pairing_indication_response;
+    fn->wifi_nan_bootstrapping_request = nan_bootstrapping_request;
+    fn->wifi_nan_bootstrapping_indication_response =
+                                nan_bootstrapping_indication_response;
 
     return WIFI_SUCCESS;
 }
@@ -4014,6 +4019,13 @@ void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
 
     pasn = &peer->pasn;
 
+    if (mgmt->u.auth.auth_transaction == 1)
+        nan_pairing_notify_initiator_response(handle, (u8 *)mgmt->da);
+    else if (mgmt->u.auth.auth_transaction == 2) {
+        peer->is_pairing_in_progress = false;
+        nan_pairing_notify_responder_response(handle, (u8 *)mgmt->da);
+     }
+
     ALOGV("nl80211: Authentication frame TX status: ack=%d", !!ack);
     ret = wpa_pasn_auth_tx_status(pasn, frame, len, ack != NULL);
     if (ret == 1) {
@@ -4022,7 +4034,6 @@ void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
                                         pasn->cipher, pasn->akmp,
                                         SECURE_NAN_PAIRING_RESPONDER);
         wpa_pasn_reset(pasn);
-        peer->is_paired = true;
         return;
     }
 }
