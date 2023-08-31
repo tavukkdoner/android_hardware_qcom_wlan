@@ -1016,17 +1016,6 @@ wifi_error NanCommand::putNanPublish(transaction_id id, const NanPublishRequest 
                                                     (const u8*)&pNanFWPairingCfg, tlvs);
     }
 
-    if (pReq->nan_pairing_config.supported_bootstrapping_methods) {
-        NanFWBootstrappingParams pNanFWBootstrappingParams;
-
-        memset(&pNanFWBootstrappingParams, 0, sizeof(NanFWBootstrappingParams));
-        pNanFWBootstrappingParams.type = NAN_BS_TYPE_ADVERTISE;
-        pNanFWBootstrappingParams.bootstrapping_method_bitmap =
-                       pReq->nan_pairing_config.supported_bootstrapping_methods;
-        tlvs = addTlv(NAN_TLV_TYPE_BOOTSTRAPPING_PARAMS, sizeof(NanFWBootstrappingParams),
-                  (const u8*)&pNanFWBootstrappingParams, tlvs);
-    }
-
     if (pReq->sdea_service_specific_info_len) {
         tlvs = addTlv(NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO, pReq->sdea_service_specific_info_len,
                       (const u8*)&pReq->sdea_service_specific_info[0], tlvs);
@@ -1412,17 +1401,6 @@ wifi_error NanCommand::putNanSubscribe(transaction_id id,
 
         tlvs = addTlv(NAN_TLV_TYPE_PAIRING_CONFIGURATION, sizeof(NanFWPairingConfigParams),
                                                     (const u8*)&pNanFWPairingCfg, tlvs);
-    }
-
-    if (pReq->nan_pairing_config.supported_bootstrapping_methods) {
-        NanFWBootstrappingParams pNanFWBootstrappingParams;
-
-        memset(&pNanFWBootstrappingParams, 0, sizeof(NanFWBootstrappingParams));
-        pNanFWBootstrappingParams.type = NAN_BS_TYPE_ADVERTISE;
-        pNanFWBootstrappingParams.bootstrapping_method_bitmap =
-                       pReq->nan_pairing_config.supported_bootstrapping_methods;
-        tlvs = addTlv(NAN_TLV_TYPE_BOOTSTRAPPING_PARAMS, sizeof(NanFWBootstrappingParams),
-                  (const u8*)&pNanFWBootstrappingParams, tlvs);
     }
 
     if (pReq->sdea_service_specific_info_len) {
