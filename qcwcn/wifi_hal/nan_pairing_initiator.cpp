@@ -238,6 +238,8 @@ wifi_error nan_pairing_request(transaction_id id,
     }
     peer->trans_id = id;
     peer->trans_id_valid = true;
+    wifi_get_iface_name(iface, secure_nan->iface_name,
+                        sizeof(secure_nan->iface_name));
 
     return WIFI_SUCCESS;
 }

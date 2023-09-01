@@ -1756,8 +1756,8 @@ struct wpa_secure_nan {
     struct nanGrpKey *dev_grp_keys;
     /* nan pairing callback ctx, holds wifi_handle */
     void *cb_ctx;
-    /* nan pairing callback iface ctx, holds wifi_interface_handle */
-    void *cb_iface_ctx;
+    /* nan pairing callback iface name, holds interface name */
+    char iface_name[IFNAMSIZ+1];
     /* list of pairing peers */
     struct list_head peers;
     /* pointer to rsne buffer */

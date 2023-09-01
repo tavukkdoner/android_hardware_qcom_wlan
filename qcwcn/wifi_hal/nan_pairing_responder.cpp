@@ -290,6 +290,8 @@ wifi_error nan_pairing_indication_response(transaction_id id,
     }
     free(peer->frame);
     peer->frame = NULL;
+    wifi_get_iface_name(iface, secure_nan->iface_name,
+                        sizeof(secure_nan->iface_name));
 
     return WIFI_SUCCESS;
 
