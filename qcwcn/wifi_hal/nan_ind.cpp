@@ -786,6 +786,7 @@ int NanCommand::handleNanSharedKeyDescIndication()
     evt.npk_security_association.npk.pmk_len = pasn->pmk_len;
     if (sizeof(evt.npk_security_association.npk.pmk) >= pasn->pmk_len)
         memcpy(evt.npk_security_association.npk.pmk, pasn->pmk, pasn->pmk_len);
+    wpa_pasn_reset(pasn);
     handleNanPairingConfirm(&evt);
     entry->is_paired = true;
 #endif

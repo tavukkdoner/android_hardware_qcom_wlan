@@ -4037,7 +4037,6 @@ void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
         nan_pairing_set_keys_from_cache(handle, pasn->own_addr, pasn->peer_addr,
                                         pasn->cipher, pasn->akmp,
                                         SECURE_NAN_PAIRING_RESPONDER);
-        wpa_pasn_reset(pasn);
         return;
     }
 }
