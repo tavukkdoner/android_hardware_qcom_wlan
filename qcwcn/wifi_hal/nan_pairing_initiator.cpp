@@ -117,7 +117,6 @@ wifi_error nan_pairing_request(transaction_id id,
                                NanPairingRequest* msg)
 {
     int ret;
-    int akmp, cipher;
     unsigned int group = 19;
     u8 pmkid[PMKID_LEN] = {0};
     struct pasn_data *pasn;
@@ -126,6 +125,8 @@ wifi_error nan_pairing_request(transaction_id id,
     wifi_handle wifiHandle = getWifiHandle(iface);
     hal_info *info = getHalInfo(wifiHandle);
     struct nan_pairing_peer_info *peer;
+    int akmp = WPA_KEY_MGMT_PASN;
+    int cipher = WPA_CIPHER_CCMP;
 
     if (!info || !info->secure_nan) {
         ALOGE("%s: Error hal_info NULL", __FUNCTION__);
@@ -152,34 +153,36 @@ wifi_error nan_pairing_request(transaction_id id,
     if (msg->nan_pairing_request_type == NAN_PAIRING_SETUP) {
         peer = nan_pairing_add_peer_to_list(secure_nan,
                                             msg->peer_disc_mac_addr);
-        if (peer)
-            peer->peer_role = SECURE_NAN_PAIRING_RESPONDER;
+        if (!msg->is_opportunistic)
+            akmp = WPA_KEY_MGMT_SAE;
+
     } else {
         peer = nan_pairing_get_peer_from_list(secure_nan,
                                               msg->peer_disc_mac_addr);
+        if (msg->akm == SAE)
+            akmp = WPA_KEY_MGMT_SAE;
     }
     if (!peer) {
         ALOGE("%s: Peer not present", __FUNCTION__);
         return WIFI_ERROR_INVALID_ARGS;
     }
+    peer->peer_role = SECURE_NAN_PAIRING_RESPONDER;
 
-    pasn = &peer->pasn;
-    cipher = WPA_CIPHER_CCMP;
+    if (msg->cipher_type == NAN_CIPHER_SUITE_PUBLIC_KEY_PASN_256_MASK)
+        cipher = WPA_CIPHER_CCMP_256;
 
     if (memcmp(secure_nan->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN) != 0)
         memcpy(secure_nan->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN);
 
+    pasn = &peer->pasn;
     memcpy(secure_nan->cluster_addr, nanCommand->getClusterAddr(), NAN_MAC_ADDR_LEN);
     memcpy(pasn->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN);
     memcpy(pasn->bssid, nanCommand->getClusterAddr(), NAN_MAC_ADDR_LEN);
     os_memcpy(pasn->peer_addr, (u8 *)msg->peer_disc_mac_addr, NAN_MAC_ADDR_LEN);
 
-    if (msg->is_opportunistic)
-        akmp = WPA_KEY_MGMT_PASN;
-    else
-        akmp = WPA_KEY_MGMT_SAE;
-
     pasn->derive_kdk = true;
+    pasn->akmp = akmp;
+    pasn->cipher = cipher;
     pasn->kdk_len = WPA_KDK_MAX_LEN;
     pasn->pmksa = (struct rsn_pmksa_cache *)secure_nan->initiator_pmksa;
     peer->peer_role = SECURE_NAN_PAIRING_RESPONDER;
