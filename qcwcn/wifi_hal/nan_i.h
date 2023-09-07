@@ -779,6 +779,25 @@ enum nan_attr_id {
 #define NAN_IGTK_KEY_IDX                   4
 #define NAN_BIGTK_KEY_IDX                  6
 
+/* sub attribute iteration helpers */
+#define for_each_nan_subattr(_subattr, _data, _datalen)                    \
+        for (_subattr = (const nan_subattr *) (_data);                  \
+             (const u8 *) (_data) + (_datalen) - (const u8 *) _subattr >=  \
+                (int) sizeof(*_subattr) &&                                 \
+             (const u8 *) (_data) + (_datalen) - (const u8 *) _subattr >=  \
+                (int) sizeof(*_subattr) + _subattr->datalen;                  \
+             _subattr = (const nan_subattr *) (_subattr->data + _subattr->datalen))
+
+#define for_each_nan_subattr_id(subattr, _id, data, datalen)            \
+        for_each_nan_subattr(subattr, data, datalen)                    \
+                if (subattr->id == (_id))
+
+typedef struct PACKED {
+         u8 id;
+         u16 datalen;
+         u8 data[];
+} nan_subattr;
+
 typedef struct PACKED {
         u8 attr_id;
         u16 len;
