@@ -305,7 +305,6 @@ fail:
 int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
 {
     int ret = 0;
-    u16 bootstrap;
     struct pasn_data *pasn;
     const u8 *nan_attr_ie;
     bool nira_present = false;
@@ -371,7 +370,6 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
             memcpy(nira_nonce, nira->nonce_tag, NAN_IDENTITY_NONCE_LEN);
             memcpy(nira_tag, &nira->nonce_tag[NAN_IDENTITY_NONCE_LEN],
                    NAN_IDENTITY_TAG_LEN);
-            bootstrap = entry->peer_supported_bootstrap;
         }
 
         if (entry && entry->is_pairing_in_progress) {
@@ -407,10 +405,9 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
                          NAN_ATTR_ID_NPBA);
         if (nan_attr_ie) {
            nan_npba *npba = (nan_npba *)nan_attr_ie;
-           bootstrap = npba->bootstrapping_method;
+           entry->peer_supported_bootstrap = npba->bootstrapping_method;
         }
 
-        entry->peer_supported_bootstrap = bootstrap;
         entry->pairing_instance_id = info->secure_nan->pairing_id++;
         entry->peer_role = SECURE_NAN_PAIRING_INITIATOR;
 
