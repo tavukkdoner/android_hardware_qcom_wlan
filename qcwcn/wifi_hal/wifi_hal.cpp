@@ -4067,6 +4067,12 @@ void wifihal_event_mgmt(wifi_handle handle, struct nlattr *freq, const u8 *frame
 
     peer = nan_pairing_get_peer_from_list(info->secure_nan, (u8 *)mgmt->sa);
     if (!peer) {
+        if (is_nira_present(info->secure_nan, frame, len))
+            peer = nan_pairing_initialize_peer_for_verification(info->secure_nan,
+                                                                (u8 *)mgmt->sa);
+    }
+
+    if (!peer) {
         ALOGE("nl80211: Peer not found in the pairing list");
         return;
     }

@@ -59,6 +59,15 @@ void nan_pairing_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
    return pmksa_cache_auth_deinit(pmksa);
 }
 
+int nan_pairing_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+                                          u8 *own_addr, u8 *bssid, u8 *pmk,
+                                          u32 pmk_len)
+{
+   if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, NULL, NULL, 0, own_addr,
+                            bssid, 0, NULL, WPA_KEY_MGMT_SAE))
+          return 0;
+    return -1;
+}
 
 int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid)
@@ -180,11 +189,23 @@ wifi_error nan_pairing_indication_response(transaction_id id,
     memcpy(pasn->bssid, nanCommand->getClusterAddr(), NAN_MAC_ADDR_LEN);
     os_memcpy(pasn->peer_addr, (u8 *)mgmt->sa, NAN_MAC_ADDR_LEN);
 
+    if (msg->cipher_type == NAN_CIPHER_SUITE_PUBLIC_KEY_PASN_256_MASK) {
+        pasn->cipher = WPA_CIPHER_CCMP_256;
+        pasn->rsn_pairwise = WPA_CIPHER_CCMP_256;
+    } else {
+        pasn->cipher = WPA_CIPHER_CCMP;
+        pasn->rsn_pairwise = WPA_CIPHER_CCMP;
+    }
+
     if (msg->nan_pairing_request_type == NAN_PAIRING_VERIFICATION) {
-        if (msg->akm == SAE)
+        if (msg->akm == SAE) {
             pasn->akmp = WPA_KEY_MGMT_SAE;
-         else
+            pasn->wpa_key_mgmt = WPA_KEY_MGMT_SAE;
+            pasn->rsnxe_capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+        } else {
             pasn->akmp = WPA_KEY_MGMT_PASN;
+            pasn->wpa_key_mgmt = WPA_KEY_MGMT_PASN;
+        }
 
         // Configure NIK from the user.
         memcpy(secure_nan->dev_nik->nik_data, msg->nan_identity_key,
@@ -208,6 +229,21 @@ wifi_error nan_pairing_indication_response(transaction_id id,
         }
         // construct wrapped data for csia, nira
         nan_pairing_add_verification_ies(secure_nan, pasn, peer->peer_role);
+
+        if (msg->key_info.key_type == NAN_SECURITY_KEY_INPUT_PMK &&
+            msg->akm == SAE) {
+            if (!msg->key_info.body.pmk_info.pmk_len ||
+                nan_pairing_responder_pmksa_cache_add(secure_nan->responder_pmksa,
+                                                      pasn->own_addr,
+                                                      pasn->peer_addr,
+                                                      msg->key_info.body.pmk_info.pmk,
+                                                      msg->key_info.body.pmk_info.pmk_len)) {
+                ALOGE("pmksa cache add failed for peer=" MACSTR " and pmk len=%d ",
+                      MAC2STR(pasn->peer_addr),
+                      msg->key_info.body.pmk_info.pmk_len);
+                goto fail;
+            }
+        }
     } else {
         if (!msg->is_opportunistic) {
             pasn->akmp = WPA_KEY_MGMT_SAE;
@@ -217,14 +253,6 @@ wifi_error nan_pairing_indication_response(transaction_id id,
             pasn->akmp = WPA_KEY_MGMT_PASN;
             pasn->wpa_key_mgmt = WPA_KEY_MGMT_PASN;
         }
-        if (msg->cipher_type == NAN_CIPHER_SUITE_PUBLIC_KEY_PASN_256_MASK) {
-            pasn->cipher = WPA_CIPHER_CCMP_256;
-            pasn->rsn_pairwise = WPA_CIPHER_CCMP_256;
-        } else {
-            pasn->cipher = WPA_CIPHER_CCMP;
-            pasn->rsn_pairwise = WPA_CIPHER_CCMP;
-        }
-
         if (msg->key_info.key_type == NAN_SECURITY_KEY_INPUT_PASSPHRASE) {
             nan_pairing_set_password(peer,
                              msg->key_info.body.passphrase_info.passphrase,

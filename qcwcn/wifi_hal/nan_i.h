@@ -1565,6 +1565,13 @@ typedef struct PACKED
 #define NIR_STR_LEN 3
 #define NAN_MAX_HASH_LEN 32
 
+static inline int is_zero_nan_identity_key(const u8 *buf)
+{
+    u8 zero[NAN_IDENTITY_KEY_LEN] = { 0 };
+
+    return !memcmp(zero, buf, NAN_IDENTITY_KEY_LEN);
+}
+
 typedef struct PACKED {
     u32 cipher_version;
     u32 nonce_len;
@@ -1862,9 +1869,17 @@ int nan_pairing_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmk, u32 pmk_len);
 int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
+int nan_pairing_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+                                          u8 *own_addr, u8 *bssid, u8 *pmk,
+                                          u32 pmk_len);
 int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
 void nan_pairing_derive_grp_keys(hal_info *info, u8* addr, u32 cipher_caps);
+bool is_nira_present(struct wpa_secure_nan *secure_nan, const u8 *frame,
+                     size_t len);
+struct nan_pairing_peer_info*
+nan_pairing_initialize_peer_for_verification(struct wpa_secure_nan *secure_nan,
+                                             u8 *mac);
 
 #ifdef __cplusplus
 }

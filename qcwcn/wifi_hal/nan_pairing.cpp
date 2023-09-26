@@ -161,6 +161,48 @@ void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
     }
 }
 
+bool is_nira_present(struct wpa_secure_nan *secure_nan, const u8 *frame,
+                     size_t len)
+{
+    u16 auth_alg, auth_transaction;
+    const struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) frame;
+
+    if (!mgmt) {
+        ALOGE("%s: PASN mgmt frame NULL", __FUNCTION__);
+        return false;
+    }
+
+    if (os_memcmp(mgmt->da, secure_nan->own_addr, NAN_MAC_ADDR_LEN) != 0) {
+        ALOGE("PASN Responder: Not our frame");
+        return false;
+    }
+
+    auth_alg = le_to_host16(mgmt->u.auth.auth_alg);
+    auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
+
+    if (auth_alg == WLAN_AUTH_PASN && auth_transaction == 1  &&
+        nan_get_attr_from_ies(mgmt->u.auth.variable,
+                        len - offsetof(struct ieee80211_mgmt, u.auth.variable),
+                        NAN_ATTR_ID_NIRA)) {
+        ALOGV("%s: NIRA present", __FUNCTION__);
+        return true;
+    }
+    return false;
+}
+
+struct nan_pairing_peer_info*
+nan_pairing_initialize_peer_for_verification(struct wpa_secure_nan *secure_nan,
+                                             u8 *mac)
+{
+  struct nan_pairing_peer_info* entry;
+
+  entry = nan_pairing_add_peer_to_list(secure_nan, mac);
+  entry->peer_role = SECURE_NAN_PAIRING_INITIATOR;
+  entry->pub_sub_id = secure_nan->pub_sub_id;
+  entry->is_paired = true;
+  return entry;
+}
+
 /* callback handlers registered for nl message send */
 static int error_handler_nan(struct sockaddr_nl *nla, struct nlmsgerr *err,
                          void *arg)
@@ -1232,6 +1274,11 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
         ALOGE(" %s: No Peer in pairing list, ADDR=" MACSTR,
               __FUNCTION__, MAC2STR(bssid));
         return -1;
+    }
+
+    if (is_zero_nan_identity_key(entry->peer_nik)) {
+        ALOGV("Peer NIK not available, Ignore NIRA validation");
+        return 0;
     }
 
     os_memset(tag, 0, sizeof(tag));
