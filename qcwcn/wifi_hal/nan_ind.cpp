@@ -689,6 +689,7 @@ int NanCommand::handleNanSharedKeyDescIndication()
     int retval = WIFI_SUCCESS;
     u16 shared_key_attr_len = 0;
     u8 shared_key_attr[NAN_MAX_SHARED_KEY_ATTR_LEN];
+    wifi_interface_handle ifaceHandle;
 
     if (mNanVendorEvent == NULL) {
         ALOGE("%s: Invalid mNanVendorEvent:%p",
@@ -758,6 +759,25 @@ int NanCommand::handleNanSharedKeyDescIndication()
     if (!entry) {
         ALOGE("%s NAN Pairing: peer not found", __FUNCTION__);
         return retval;
+    }
+
+    if (entry->peer_role == SECURE_NAN_PAIRING_INITIATOR) {
+      NanSharedKeyRequest msg;
+      if (nan_get_shared_key_descriptor(info, entry->bssid, &msg)) {
+          ALOGE("NAN: Unable to get shared key descriptor");
+          return -1;
+      }
+      ifaceHandle = wifi_get_iface_handle(wifiHandle(),
+                                          info->secure_nan->iface_name);
+      if (!ifaceHandle) {
+          ALOGE("%s: ifaceHandle NULL for %s", __FUNCTION__,
+                info->secure_nan->iface_name);
+          return -1;
+      }
+      memcpy(msg.peer_disc_mac_addr,entry->bssid, NAN_MAC_ADDR_LEN);
+      msg.requestor_instance_id = pRsp->followupIndParams.matchHandle;
+      msg.pub_sub_id = entry->pub_sub_id;
+      nan_sharedkey_followup_request(0, ifaceHandle, &msg);
     }
 
     pasn = &entry->pasn;
