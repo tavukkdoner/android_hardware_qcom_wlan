@@ -59,6 +59,15 @@ void nan_pairing_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
     return pmksa_cache_deinit(pmksa);
 }
 
+int nan_pairing_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+                                          u8 *own_addr, u8 *bssid, u8 *pmk,
+                                          u32 pmk_len)
+{
+    if (pmksa_cache_add(pmksa, pmk, pmk_len, NULL, NULL, 0, bssid, own_addr,
+                        NULL, WPA_KEY_MGMT_SAE, 0))
+          return 0;
+    return -1;
+}
 
 int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid)
@@ -159,6 +168,9 @@ wifi_error nan_pairing_request(transaction_id id,
     } else {
         peer = nan_pairing_get_peer_from_list(secure_nan,
                                               msg->peer_disc_mac_addr);
+        if (!peer)
+            peer = nan_pairing_add_peer_to_list(secure_nan,
+                                                msg->peer_disc_mac_addr);
         if (msg->akm == SAE)
             akmp = WPA_KEY_MGMT_SAE;
     }
@@ -186,6 +198,8 @@ wifi_error nan_pairing_request(transaction_id id,
     pasn->kdk_len = WPA_KDK_MAX_LEN;
     pasn->pmksa = (struct rsn_pmksa_cache *)secure_nan->initiator_pmksa;
     peer->peer_role = SECURE_NAN_PAIRING_RESPONDER;
+    peer->requestor_instance_id = msg->requestor_instance_id;
+    peer->pub_sub_id = info->secure_nan->pub_sub_id;
 
     ALOGI("%s: src_addr=" MACSTR ",addr=" MACSTR ",akmp=%d type=%d auth=%d supported bootstrap = %d",
            __FUNCTION__,
@@ -228,6 +242,21 @@ wifi_error nan_pairing_request(transaction_id id,
         pasn->custom_pmkid_valid = true;
         os_memcpy(pasn->custom_pmkid, pmkid, PMKID_LEN);
 
+        if (msg->key_info.key_type == NAN_SECURITY_KEY_INPUT_PMK &&
+            msg->akm == SAE) {
+            if (!msg->key_info.body.pmk_info.pmk_len ||
+                nan_pairing_initiator_pmksa_cache_add(secure_nan->initiator_pmksa,
+                                                      pasn->own_addr,
+                                                      msg->peer_disc_mac_addr,
+                                                      msg->key_info.body.pmk_info.pmk,
+                                                      msg->key_info.body.pmk_info.pmk_len)) {
+                ALOGE("pmksa cache add failed for peer=" MACSTR " and pmk len=%d ",
+                      MAC2STR(msg->peer_disc_mac_addr),
+                      msg->key_info.body.pmk_info.pmk_len);
+                return WIFI_ERROR_UNKNOWN;
+            }
+        }
+
         ret = wpa_pasn_verify(pasn, nanCommand->getNmi(), msg->peer_disc_mac_addr,
                               nanCommand->getClusterAddr(), akmp,
                               cipher, group, 0, NULL, 0, NULL, 0, NULL);
@@ -235,6 +264,7 @@ wifi_error nan_pairing_request(transaction_id id,
             ALOGE("wpas_pasn_verify failed, ret = %d", ret);
             return WIFI_ERROR_UNKNOWN;
         }
+        peer->is_paired = true;
     }
     peer->trans_id = id;
     peer->trans_id_valid = true;
