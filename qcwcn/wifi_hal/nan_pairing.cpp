@@ -1252,6 +1252,19 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
     return 0;
 }
 
+const u8 * get_nan_subattr(const u8 *ies, size_t len, u8 id)
+{
+  const nan_subattr *subattr;
+
+  if (!ies)
+      return NULL;
+
+  for_each_nan_subattr_id(subattr, id, ies, len)
+      return &subattr->id;
+
+  return NULL;
+}
+
 const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr)
 {
   const u8 *nan;
@@ -1263,7 +1276,7 @@ const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr)
   }
   nan = nan_ie + NAN_IE_HEADER;
 
-  return get_ie(nan, 2 + ie_len - NAN_IE_HEADER, attr);
+  return get_nan_subattr(nan, 2 + ie_len - NAN_IE_HEADER, attr);
 }
 
 const u8 *nan_get_attr_from_ies(const u8 *ies, size_t ies_len,
