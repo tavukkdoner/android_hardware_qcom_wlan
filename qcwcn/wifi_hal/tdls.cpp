@@ -117,57 +117,57 @@ int TdlsCommand::handleEvent(WifiEvent &event)
                         mDataLen, NULL);
 
                 ALOGV("QCA_NL80211_VENDOR_SUBCMD_TDLS_STATE Received");
-                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_MAC_ADDR])
+                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_MAC_ADDR])
                 {
-                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_MAC_ADDR not found",
+                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_STATE_MAC_ADDR not found",
                             __FUNCTION__);
                     return WIFI_ERROR_INVALID_ARGS;
                 }
                 memcpy(addr,
-                  (u8 *)nla_data(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_MAC_ADDR]),
-                  nla_len(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_MAC_ADDR]));
+                  (u8 *)nla_data(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_MAC_ADDR]),
+                  nla_len(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_MAC_ADDR]));
 
                 ALOGV(MAC_ADDR_STR, MAC_ADDR_ARRAY(addr));
 
-                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE])
+                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_NEW_STATE])
                 {
-                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_STATE not found",
+                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_STATE_NEW_STATE not found",
                             __FUNCTION__);
                     return WIFI_ERROR_INVALID_ARGS;
                 }
                 status.state = (wifi_tdls_state)
-                    get_u32(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE]);
+                    get_u32(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_NEW_STATE]);
                 ALOGV("TDLS: State New : %d ", status.state);
 
-                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_REASON])
+                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_REASON])
                 {
-                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_REASON not found",
+                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_STATE_REASON not found",
                             __FUNCTION__);
                     return WIFI_ERROR_INVALID_ARGS;
                 }
                 status.reason = (wifi_tdls_reason)
-                    get_s32(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_REASON]);
+                    get_s32(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_REASON]);
                 ALOGV("TDLS: Reason : %d ", status.reason);
 
-                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_CHANNEL])
+                if (!tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_CHANNEL])
                 {
-                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_CHANNEL not found",
+                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_STATE_CHANNEL not found",
                             __FUNCTION__);
                     return WIFI_ERROR_INVALID_ARGS;
                 }
                 status.channel =
-                    get_u32(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_CHANNEL]);
+                    get_u32(tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_CHANNEL]);
                 ALOGV("TDLS: channel : %d ", status.channel);
 
                 if (!tb_vendor[
-                        QCA_WLAN_VENDOR_ATTR_TDLS_GLOBAL_OPERATING_CLASS])
+                        QCA_WLAN_VENDOR_ATTR_TDLS_STATE_GLOBAL_OPERATING_CLASS])
                 {
-                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_GLOBAL_OPERATING_CLASS"
+                    ALOGE("%s: QCA_WLAN_VENDOR_ATTR_TDLS_STATE_GLOBAL_OPERATING_CLASS"
                             " not found", __FUNCTION__);
                     return WIFI_ERROR_INVALID_ARGS;
                 }
                 status.global_operating_class = get_u32(
-                   tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_GLOBAL_OPERATING_CLASS]);
+                   tb_vendor[QCA_WLAN_VENDOR_ATTR_TDLS_STATE_GLOBAL_OPERATING_CLASS]);
                 ALOGV("TDLS: global_operating_class: %d ",
                         status.global_operating_class);
 
