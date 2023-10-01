@@ -975,6 +975,7 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
         memcpy(evt.npk_security_association.npk.pmk, pasn->pmk,
                pasn->pmk_len);
 
+        wpa_pasn_reset(pasn);
         nanCommand->handleNanPairingConfirm(&evt);
         peer->is_paired = true;
     } else {
