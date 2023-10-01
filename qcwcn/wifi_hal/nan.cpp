@@ -245,6 +245,10 @@ wifi_error nan_publish_request(transaction_id id,
     }
 
     if (info->secure_nan) {
+
+        memcpy(info->secure_nan->own_addr, t_nanCommand->getNmi(),
+               NAN_MAC_ADDR_LEN);
+
         info->secure_nan->enable_pairing_setup =
               msg->nan_pairing_config.enable_pairing_setup;
 
@@ -261,7 +265,8 @@ wifi_error nan_publish_request(transaction_id id,
 #endif
     }
 
-    nan_set_nira_request(id, iface, msg->nan_identity_key);
+    if (msg->nan_pairing_config.enable_pairing_verification)
+        nan_set_nira_request(id, iface, msg->nan_identity_key);
 
     nanCommand = new NanCommand(wifiHandle,
                                 0,
@@ -374,6 +379,10 @@ wifi_error nan_subscribe_request(transaction_id id,
     }
 
     if (info->secure_nan) {
+
+        memcpy(info->secure_nan->own_addr, t_nanCommand->getNmi(),
+               NAN_MAC_ADDR_LEN);
+
         info->secure_nan->enable_pairing_setup =
               msg->nan_pairing_config.enable_pairing_setup;
 
@@ -390,7 +399,9 @@ wifi_error nan_subscribe_request(transaction_id id,
 #endif
     }
 
-    nan_set_nira_request(id, iface, msg->nan_identity_key);
+
+    if (msg->nan_pairing_config.enable_pairing_verification)
+        nan_set_nira_request(id, iface, msg->nan_identity_key);
 
     nanCommand = new NanCommand(wifiHandle,
                                 0,
@@ -1945,17 +1956,9 @@ wifi_error nan_set_nira_request(transaction_id id,
 
     nik = info->secure_nan->dev_nik;
 
-    if (!nik->nik_len || !nik->nira_nonce_len || !nik->nira_tag_len)
-    {
-        ALOGV("%s: Invalid NIRA nik/nonce/tag lengths", __FUNCTION__);
-        return WIFI_ERROR_UNKNOWN;
-    }
-
-    if (memcmp(nik->nik_data, nan_identity_key, NAN_IDENTITY_KEY_LEN) != 0)
-    {
-        ALOGV("%s: NAN IDENTITY KEY Mismatch", __FUNCTION__);
-        return WIFI_ERROR_UNKNOWN;
-    }
+    memcpy(nik->nik_data, nan_identity_key, NAN_IDENTITY_KEY_LEN);
+    nik->nik_len = NAN_IDENTITY_KEY_LEN;
+    nan_pairing_set_nira(info->secure_nan);
 
     msg.cipher_version = nik->cipher;
     msg.nonce_len = nik->nira_nonce_len;

@@ -483,7 +483,15 @@ int NanCommand::getNanMatch(NanMatchInd *event)
                                              &event->peer_pairing_config);
             break;
         case NAN_TLV_TYPE_NIRA_NONCE:
+            if (outputTlv.length > sizeof(event->nira.nonce))
+                outputTlv.length = sizeof(event->nira.nonce);
+            memcpy(event->nira.nonce, outputTlv.value, outputTlv.length);
+            event->peer_pairing_config.enable_pairing_verification = 1;
+            break;
         case NAN_TLV_TYPE_NIRA_TAG:
+            if (outputTlv.length > sizeof(event->nira.tag))
+                outputTlv.length = sizeof(event->nira.tag);
+            memcpy(event->nira.tag, outputTlv.value, outputTlv.length);
             event->peer_pairing_config.enable_pairing_verification = 1;
             break;
         case NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO:

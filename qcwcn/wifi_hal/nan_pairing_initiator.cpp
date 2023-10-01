@@ -166,12 +166,8 @@ wifi_error nan_pairing_request(transaction_id id,
     pasn = &peer->pasn;
     cipher = WPA_CIPHER_CCMP;
 
-    if (memcmp(secure_nan->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN) != 0) {
+    if (memcmp(secure_nan->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN) != 0)
         memcpy(secure_nan->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN);
-        // Update NIRA when src mac address changed
-        if (info->secure_nan->dev_nik)
-            nan_pairing_set_nik_nira(info->secure_nan);
-    }
 
     memcpy(secure_nan->cluster_addr, nanCommand->getClusterAddr(), NAN_MAC_ADDR_LEN);
     memcpy(pasn->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN);
@@ -213,13 +209,14 @@ wifi_error nan_pairing_request(transaction_id id,
             return WIFI_ERROR_UNKNOWN;
         }
     } else if (msg->nan_pairing_request_type == NAN_PAIRING_VERIFICATION) {
+        // Configure NIK from the user.
+        memcpy(secure_nan->dev_nik->nik_data, msg->nan_identity_key,
+               NAN_IDENTITY_KEY_LEN);
+        secure_nan->dev_nik->nik_len = NAN_IDENTITY_KEY_LEN;
+        nan_pairing_set_nira(info->secure_nan);
         // construct wrapped data for csia, nira
         nan_pairing_add_verification_ies(secure_nan, pasn, peer->peer_role);
 
-        if (!secure_nan->dev_nik) {
-            ALOGE("%s: Device NIK NULL", __FUNCTION__);
-            return WIFI_ERROR_UNKNOWN;
-        }
         os_memcpy(pmkid, secure_nan->dev_nik->nira_nonce,
                   secure_nan->dev_nik->nira_nonce_len);
         os_memcpy(&pmkid[secure_nan->dev_nik->nira_nonce_len],

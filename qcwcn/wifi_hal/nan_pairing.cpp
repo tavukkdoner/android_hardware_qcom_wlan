@@ -1678,7 +1678,7 @@ fail:
     return;
 }
 
-void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
+void nan_pairing_set_nira(struct wpa_secure_nan *secure_nan)
 {
     int ret;
     struct nanIDkey *nik;
@@ -1691,12 +1691,6 @@ void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
     }
 
     nik = secure_nan->dev_nik;
-
-    ret = random_get_bytes(nik->nik_data, NAN_IDENTITY_KEY_LEN);
-    if (ret < 0) {
-        ALOGE("%s: Get random NIK data Failed, err = %d", __FUNCTION__, ret);
-        return;
-    }
 
     ret = random_get_bytes(nik->nira_nonce, NAN_IDENTITY_NONCE_LEN);
     if (ret < 0) {
@@ -1721,7 +1715,6 @@ void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
     }
     os_memcpy(nik->nira_tag, tag, NAN_IDENTITY_TAG_LEN);
 
-    nik->nik_len = NAN_IDENTITY_KEY_LEN;
     nik->nira_nonce_len = NAN_IDENTITY_NONCE_LEN;
     nik->nira_tag_len = NAN_IDENTITY_TAG_LEN;
 }
@@ -1896,6 +1889,11 @@ wifi_error nan_get_pairing_pmkid(transaction_id id,
 {
     ALOGE("NAN Pairing get PMKID not supported");
     return WIFI_ERROR_NOT_SUPPORTED;
+}
+
+void nan_pairing_set_nira(struct wpa_secure_nan *secure_nan)
+{
+    ALOGE("NAN Pairing set NIRA not supported");
 }
 
 #endif /* WPA_PASN_LIB */

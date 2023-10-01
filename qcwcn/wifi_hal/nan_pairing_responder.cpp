@@ -263,6 +263,11 @@ wifi_error nan_pairing_indication_response(transaction_id id,
        /* Get the security key and configure it to secure pasn ctx */
        if (msg->nan_pairing_request_type == NAN_PAIRING_VERIFICATION) {
            ALOGV("%s: verification, key info not required", __FUNCTION__);
+           // Configure NIK from the user.
+           memcpy(secure_nan->dev_nik->nik_data, msg->nan_identity_key,
+                  NAN_IDENTITY_KEY_LEN);
+           secure_nan->dev_nik->nik_len = NAN_IDENTITY_KEY_LEN;
+           nan_pairing_set_nira(info->secure_nan);
        } else if (msg->key_info.key_type == NAN_SECURITY_KEY_INPUT_PASSPHRASE) {
           nan_pairing_set_password(peer,
                               msg->key_info.body.passphrase_info.passphrase,
@@ -345,9 +350,6 @@ int nan_pairing_handle_pasn_auth(wifi_handle handle, const u8 *data, size_t len)
 
     if (memcmp(info->secure_nan->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN) != 0) {
         memcpy(info->secure_nan->own_addr, nanCommand->getNmi(), NAN_MAC_ADDR_LEN);
-        // Update NIRA when src mac address changed
-        if (info->secure_nan->dev_nik)
-            nan_pairing_set_nik_nira(info->secure_nan);
     }
 
     /* PASN authentication M1 frame processing */
