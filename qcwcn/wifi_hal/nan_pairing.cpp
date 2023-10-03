@@ -884,6 +884,7 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
     hal_info *info = getHalInfo(handle);
     struct pasn_data *pasn;
     NanCommand *nanCommand = NULL;
+    wifi_interface_handle ifaceHandle;
 
     nanCommand = NanCommand::instance(handle);
     if (nanCommand == NULL) {
@@ -920,6 +921,13 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
     nan_pairing_set_key(info, alg, bssid, 0, 1, NULL, 0, tk, tk_len,
                         KEY_FLAG_PAIRWISE_RX_TX);
 
+    ifaceHandle = wifi_get_iface_handle(handle, info->secure_nan->iface_name);
+    if (!ifaceHandle) {
+        ALOGE("%s: ifaceHandle NULL for %s", __FUNCTION__,
+              info->secure_nan->iface_name);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
     if (peer_role == SECURE_NAN_PAIRING_INITIATOR) {
         memset(&cfg_debug, 0, sizeof(NanDebugParams));
         cfg_debug.cmd = NAN_TEST_MODE_CMD_PMK;
@@ -930,8 +938,7 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
             ALOGE("%s: Invalid NDP PMK len", __FUNCTION__);
             return WIFI_ERROR_INVALID_ARGS;
         }
-        nan_debug_command_config(0, (wifi_interface_handle)info->secure_nan->cb_iface_ctx,
-                                 cfg_debug, size + 4);
+        nan_debug_command_config(0, ifaceHandle, cfg_debug, size + 4);
         nan_pasn_kdk_to_nan_kek(entry->ptk.kdk, entry->ptk.kdk_len, entry->addr,
                                 entry->own_addr, akmp, cipher, entry->ptk.kek,
                                 &entry->ptk.kek_len);
@@ -940,8 +947,7 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
                                 entry->addr, akmp, cipher, entry->ptk.kek,
                                 &entry->ptk.kek_len);
     }
-    nan_set_nira_request(0, (wifi_interface_handle)info->secure_nan->cb_iface_ctx,
-                         info->secure_nan->dev_nik->nik_data);
+    nan_set_nira_request(0, ifaceHandle, info->secure_nan->dev_nik->nik_data);
     if (!(peer->dcea_cap_info & DCEA_NPK_CACHING_ENABLED)) {
         // Send Pairing Confirmation as Followup with Peer NIK is not mandatory
         NanPairingConfirmInd evt;
@@ -980,8 +986,7 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
       memcpy(msg.peer_disc_mac_addr, peer->bssid, NAN_MAC_ADDR_LEN);
       msg.requestor_instance_id = peer->requestor_instance_id;
       msg.pub_sub_id = peer->pub_sub_id;
-      nan_sharedkey_followup_request(0, (wifi_interface_handle)info->secure_nan->cb_iface_ctx,
-                                     &msg);
+      nan_sharedkey_followup_request(0, ifaceHandle, &msg);
     }
     return WIFI_SUCCESS;
 }
@@ -1773,7 +1778,8 @@ int secure_nan_init(wifi_interface_handle iface)
     }
 
     secure_nan->cb_ctx = wifiHandle;
-    secure_nan->cb_iface_ctx = iface;
+    wifi_get_iface_name(iface, secure_nan->iface_name,
+                        sizeof(secure_nan->iface_name));
     secure_nan->ptksa = ptksa_cache_init();
     if (!secure_nan->ptksa) {
         ALOGE("Secure NAN PTKSA init failed");
