@@ -213,6 +213,7 @@ wifi_error nan_disable_request(transaction_id id,
         if (t_nanCommand != NULL) {
             t_nanCommand->deallocSvcParams();
         }
+        secure_nan_cache_flush(info);
     }
 
 cleanup:

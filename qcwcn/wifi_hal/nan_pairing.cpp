@@ -1870,6 +1870,21 @@ int secure_nan_init(wifi_interface_handle iface)
     return 0;
 }
 
+int secure_nan_cache_flush(hal_info *info)
+{
+    if(!info->secure_nan) {
+       ALOGE("Secure NAN == NULL");
+       return -1;
+    }
+    if (info->secure_nan->ptksa)
+        ptksa_cache_flush(info->secure_nan->ptksa, NULL, WPA_CIPHER_NONE);
+
+    nan_pairing_initiator_pmksa_cache_flush(info->secure_nan->initiator_pmksa);
+    nan_pairing_responder_pmksa_cache_flush(info->secure_nan->responder_pmksa);
+    nan_pairing_delete_list(info->secure_nan);
+    return 0;
+}
+
 int secure_nan_deinit(hal_info *info)
 {
     if(!info->secure_nan) {
@@ -1927,6 +1942,12 @@ void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
 int secure_nan_init(wifi_interface_handle iface)
 {
     ALOGE("Secure NAN init not supported");
+    return -1;
+}
+
+int secure_nan_cache_flush(hal_info *info)
+{
+    ALOGE("Secure NAN cache flush not supported");
     return -1;
 }
 

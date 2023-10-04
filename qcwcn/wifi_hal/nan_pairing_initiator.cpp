@@ -82,6 +82,11 @@ int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
     return -1;
 }
 
+void nan_pairing_initiator_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa)
+{
+    return pmksa_cache_flush(pmksa, NULL, NULL, 0, false);
+}
+
 void NanCommand::notifyPairingInitiatorResponse(transaction_id id, u32 pairing_id)
 {
     NanResponseMsg rsp_data;

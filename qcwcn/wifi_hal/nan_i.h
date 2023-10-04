@@ -1805,6 +1805,7 @@ void NanErrorTranslation(NanInternalStatusType firmwareErrorRecvd,
 
 /* nan pairing internal function prototypes */
 int secure_nan_init(wifi_interface_handle iface);
+int secure_nan_cache_flush(hal_info *info);
 int secure_nan_deinit(hal_info *info);
 void nan_pairing_set_nira(struct wpa_secure_nan *secure_nan);
 unsigned int nan_pairing_get_nik_lifetime(struct nanIDkey *nik);
@@ -1869,11 +1870,13 @@ int nan_pairing_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmk, u32 pmk_len);
 int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
+void nan_pairing_initiator_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa);
 int nan_pairing_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
                                           u8 *own_addr, u8 *bssid, u8 *pmk,
                                           u32 pmk_len);
 int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
+void nan_pairing_responder_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa);
 void nan_pairing_derive_grp_keys(hal_info *info, u8* addr, u32 cipher_caps);
 bool is_nira_present(struct wpa_secure_nan *secure_nan, const u8 *frame,
                      size_t len);
