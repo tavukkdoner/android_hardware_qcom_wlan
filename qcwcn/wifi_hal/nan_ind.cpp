@@ -621,6 +621,12 @@ int NanCommand::handleNanBootstrappingIndication()
        if (params->type == NAN_BS_TYPE_REQUEST) {
            NanBootstrappingRequestInd bootstrapReqInd;
 
+           entry = nan_pairing_get_peer_from_list(info->secure_nan, mac);
+           if (entry && entry->is_pairing_in_progress) {
+               ALOGV("%s: pairing in progress", __FUNCTION__);
+               return WIFI_ERROR_UNKNOWN;
+           }
+
            memset(&bootstrapReqInd, 0, sizeof(bootstrapReqInd));
            bootstrapReqInd.publish_subscribe_id = pRsp->fwHeader.handle;
            info->secure_nan->bootstrapping_id++;
@@ -809,6 +815,7 @@ int NanCommand::handleNanSharedKeyDescIndication()
     wpa_pasn_reset(pasn);
     handleNanPairingConfirm(&evt);
     entry->is_paired = true;
+    entry->is_pairing_in_progress = false;
 #endif
     return retval;
 }

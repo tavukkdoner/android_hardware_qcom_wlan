@@ -1020,6 +1020,7 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
         wpa_pasn_reset(pasn);
         nanCommand->handleNanPairingConfirm(&evt);
         peer->is_paired = true;
+        peer->is_pairing_in_progress = false;
     } else if (peer_role == SECURE_NAN_PAIRING_RESPONDER) {
       NanSharedKeyRequest msg;
       if (nan_get_shared_key_descriptor(info, peer->bssid, &msg)) {

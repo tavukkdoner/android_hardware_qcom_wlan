@@ -183,6 +183,12 @@ wifi_error nan_pairing_request(transaction_id id,
         ALOGE("%s: Peer not present", __FUNCTION__);
         return WIFI_ERROR_INVALID_ARGS;
     }
+
+    if (peer->is_pairing_in_progress) {
+        ALOGE("%s: pairing in progress", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
     peer->peer_role = SECURE_NAN_PAIRING_RESPONDER;
 
     if (msg->cipher_type == NAN_CIPHER_SUITE_PUBLIC_KEY_PASN_256_MASK)
@@ -273,6 +279,7 @@ wifi_error nan_pairing_request(transaction_id id,
     }
     peer->trans_id = id;
     peer->trans_id_valid = true;
+    peer->is_pairing_in_progress = true;
     wifi_get_iface_name(iface, secure_nan->iface_name,
                         sizeof(secure_nan->iface_name));
 

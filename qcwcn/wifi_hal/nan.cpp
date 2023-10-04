@@ -603,6 +603,12 @@ wifi_error nan_bootstrapping_request(transaction_id id,
         goto cleanup;
     }
 
+    entry = nan_pairing_get_peer_from_list(info->secure_nan, msg->peer_disc_mac_addr);
+    if (entry && entry->is_pairing_in_progress) {
+        ALOGV("%s: pairing in progress", __FUNCTION__);
+        goto cleanup;
+    }
+
     entry = nan_pairing_add_peer_to_list(info->secure_nan, msg->peer_disc_mac_addr);
     if (entry) {
         entry->pub_sub_id = pub_sub_id;
