@@ -4037,7 +4037,6 @@ void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
         nan_pairing_set_keys_from_cache(handle, pasn->own_addr, pasn->peer_addr,
                                         pasn->cipher, pasn->akmp,
                                         SECURE_NAN_PAIRING_RESPONDER);
-        wpa_pasn_reset(pasn);
         return;
     }
 }
@@ -4067,6 +4066,12 @@ void wifihal_event_mgmt(wifi_handle handle, struct nlattr *freq, const u8 *frame
     }
 
     peer = nan_pairing_get_peer_from_list(info->secure_nan, (u8 *)mgmt->sa);
+    if (!peer) {
+        if (is_nira_present(info->secure_nan, frame, len))
+            peer = nan_pairing_initialize_peer_for_verification(info->secure_nan,
+                                                                (u8 *)mgmt->sa);
+    }
+
     if (!peer) {
         ALOGE("nl80211: Peer not found in the pairing list");
         return;

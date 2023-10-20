@@ -779,6 +779,25 @@ enum nan_attr_id {
 #define NAN_IGTK_KEY_IDX                   4
 #define NAN_BIGTK_KEY_IDX                  6
 
+/* sub attribute iteration helpers */
+#define for_each_nan_subattr(_subattr, _data, _datalen)                    \
+        for (_subattr = (const nan_subattr *) (_data);                  \
+             (const u8 *) (_data) + (_datalen) - (const u8 *) _subattr >=  \
+                (int) sizeof(*_subattr) &&                                 \
+             (const u8 *) (_data) + (_datalen) - (const u8 *) _subattr >=  \
+                (int) sizeof(*_subattr) + _subattr->datalen;                  \
+             _subattr = (const nan_subattr *) (_subattr->data + _subattr->datalen))
+
+#define for_each_nan_subattr_id(subattr, _id, data, datalen)            \
+        for_each_nan_subattr(subattr, data, datalen)                    \
+                if (subattr->id == (_id))
+
+typedef struct PACKED {
+         u8 id;
+         u16 datalen;
+         u8 data[];
+} nan_subattr;
+
 typedef struct PACKED {
         u8 attr_id;
         u16 len;
@@ -1546,6 +1565,13 @@ typedef struct PACKED
 #define NIR_STR_LEN 3
 #define NAN_MAX_HASH_LEN 32
 
+static inline int is_zero_nan_identity_key(const u8 *buf)
+{
+    u8 zero[NAN_IDENTITY_KEY_LEN] = { 0 };
+
+    return !memcmp(zero, buf, NAN_IDENTITY_KEY_LEN);
+}
+
 typedef struct PACKED {
     u32 cipher_version;
     u32 nonce_len;
@@ -1779,8 +1805,9 @@ void NanErrorTranslation(NanInternalStatusType firmwareErrorRecvd,
 
 /* nan pairing internal function prototypes */
 int secure_nan_init(wifi_interface_handle iface);
+int secure_nan_cache_flush(hal_info *info);
 int secure_nan_deinit(hal_info *info);
-void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan);
+void nan_pairing_set_nira(struct wpa_secure_nan *secure_nan);
 unsigned int nan_pairing_get_nik_lifetime(struct nanIDkey *nik);
 struct rsn_pmksa_cache *nan_pairing_initiator_pmksa_cache_init(void);
 void nan_pairing_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
@@ -1839,11 +1866,23 @@ wifi_error nan_validate_shared_key_desc(hal_info *info, const u8 *addr, u8 *buf,
                                         u16 len);
 wifi_error nan_get_shared_key_descriptor(hal_info *info, const u8 *addr,
                                          NanSharedKeyRequest *key);
+int nan_pairing_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+                                          u8 *bssid, u8 *pmk, u32 pmk_len);
 int nan_pairing_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
+void nan_pairing_initiator_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa);
+int nan_pairing_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+                                          u8 *own_addr, u8 *bssid, u8 *pmk,
+                                          u32 pmk_len);
 int nan_pairing_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
                                           u8 *bssid, u8 *pmkid);
+void nan_pairing_responder_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa);
 void nan_pairing_derive_grp_keys(hal_info *info, u8* addr, u32 cipher_caps);
+bool is_nira_present(struct wpa_secure_nan *secure_nan, const u8 *frame,
+                     size_t len);
+struct nan_pairing_peer_info*
+nan_pairing_initialize_peer_for_verification(struct wpa_secure_nan *secure_nan,
+                                             u8 *mac);
 
 #ifdef __cplusplus
 }

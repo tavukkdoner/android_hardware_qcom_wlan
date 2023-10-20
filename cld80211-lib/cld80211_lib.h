@@ -43,16 +43,6 @@ extern "C" {
 #define UNUSED(x)    (void)(x)
 #endif
 
-struct cld80211_ctx {
-	struct nl_sock *sock;
-	int netlink_familyid;
-	/* socket pair used to exit from blocking poll*/
-	int exit_sockets[2];
-	int sock_buf_size;
-	int nlctrl_familyid;
-	bool is_terminating;
-};
-
 /**
  * enum cld80211_attr - Driver/Application embeds the data in nlmsg with the
  *                      help of below attributes
@@ -85,7 +75,7 @@ enum cld80211_attr {
  * Retuns valid sock only if socket creation is succesful and cld80211
  * family is present, returns NULL otherwise
  */
-struct cld80211_ctx *cld80211_init(void);
+void *cld80211_init(void);
 
 /**
  * free the socket created in cld80211_init()

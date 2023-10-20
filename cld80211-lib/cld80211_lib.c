@@ -42,6 +42,7 @@
 #include <linux/pkt_sched.h>
 #include <unistd.h>
 #include "cld80211_lib.h"
+#include "cld80211_lib_int.h"
 
 #ifndef LE_BUILD
  #include <log/log.h>
@@ -473,7 +474,7 @@ int cld80211_recv(void *cldctx, int timeout, bool recv_multi_msg,
 }
 
 
-struct cld80211_ctx * cld80211_init(void)
+void *cld80211_init(void)
 {
 	struct cld80211_ctx *ctx;
 

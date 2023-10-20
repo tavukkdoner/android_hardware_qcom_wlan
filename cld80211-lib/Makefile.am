@@ -13,7 +13,7 @@ AM_CFLAGS += -Wno-unused-parameter -Wno-int-to-pointer-cast \
              -Wno-maybe-uninitialized -Wno-parentheses -DLE_BUILD \
              -D_GNU_SOURCE=1
 
-h_sources = cld80211_lib.h
+h_sources = cld80211_lib.h cld80211_lib_int.h
 library_includedir = $(pkgincludedir)
 library_include_HEADERS = $(h_sources)
 

@@ -483,7 +483,15 @@ int NanCommand::getNanMatch(NanMatchInd *event)
                                              &event->peer_pairing_config);
             break;
         case NAN_TLV_TYPE_NIRA_NONCE:
+            if (outputTlv.length > sizeof(event->nira.nonce))
+                outputTlv.length = sizeof(event->nira.nonce);
+            memcpy(event->nira.nonce, outputTlv.value, outputTlv.length);
+            event->peer_pairing_config.enable_pairing_verification = 1;
+            break;
         case NAN_TLV_TYPE_NIRA_TAG:
+            if (outputTlv.length > sizeof(event->nira.tag))
+                outputTlv.length = sizeof(event->nira.tag);
+            memcpy(event->nira.tag, outputTlv.value, outputTlv.length);
             event->peer_pairing_config.enable_pairing_verification = 1;
             break;
         case NAN_TLV_TYPE_SDEA_SERVICE_SPECIFIC_INFO:
@@ -613,6 +621,12 @@ int NanCommand::handleNanBootstrappingIndication()
        if (params->type == NAN_BS_TYPE_REQUEST) {
            NanBootstrappingRequestInd bootstrapReqInd;
 
+           entry = nan_pairing_get_peer_from_list(info->secure_nan, mac);
+           if (entry && entry->is_pairing_in_progress) {
+               ALOGV("%s: pairing in progress", __FUNCTION__);
+               return WIFI_ERROR_UNKNOWN;
+           }
+
            memset(&bootstrapReqInd, 0, sizeof(bootstrapReqInd));
            bootstrapReqInd.publish_subscribe_id = pRsp->fwHeader.handle;
            info->secure_nan->bootstrapping_id++;
@@ -681,6 +695,7 @@ int NanCommand::handleNanSharedKeyDescIndication()
     int retval = WIFI_SUCCESS;
     u16 shared_key_attr_len = 0;
     u8 shared_key_attr[NAN_MAX_SHARED_KEY_ATTR_LEN];
+    wifi_interface_handle ifaceHandle;
 
     if (mNanVendorEvent == NULL) {
         ALOGE("%s: Invalid mNanVendorEvent:%p",
@@ -752,6 +767,25 @@ int NanCommand::handleNanSharedKeyDescIndication()
         return retval;
     }
 
+    if (entry->peer_role == SECURE_NAN_PAIRING_INITIATOR) {
+      NanSharedKeyRequest msg;
+      if (nan_get_shared_key_descriptor(info, entry->bssid, &msg)) {
+          ALOGE("NAN: Unable to get shared key descriptor");
+          return -1;
+      }
+      ifaceHandle = wifi_get_iface_handle(wifiHandle(),
+                                          info->secure_nan->iface_name);
+      if (!ifaceHandle) {
+          ALOGE("%s: ifaceHandle NULL for %s", __FUNCTION__,
+                info->secure_nan->iface_name);
+          return -1;
+      }
+      memcpy(msg.peer_disc_mac_addr,entry->bssid, NAN_MAC_ADDR_LEN);
+      msg.requestor_instance_id = pRsp->followupIndParams.matchHandle;
+      msg.pub_sub_id = entry->pub_sub_id;
+      nan_sharedkey_followup_request(0, ifaceHandle, &msg);
+    }
+
     pasn = &entry->pasn;
     evt.pairing_instance_id = entry->pairing_instance_id;
     evt.rsp_code = NAN_PAIRING_REQUEST_ACCEPT;
@@ -778,8 +812,10 @@ int NanCommand::handleNanSharedKeyDescIndication()
     evt.npk_security_association.npk.pmk_len = pasn->pmk_len;
     if (sizeof(evt.npk_security_association.npk.pmk) >= pasn->pmk_len)
         memcpy(evt.npk_security_association.npk.pmk, pasn->pmk, pasn->pmk_len);
+    wpa_pasn_reset(pasn);
     handleNanPairingConfirm(&evt);
     entry->is_paired = true;
+    entry->is_pairing_in_progress = false;
 #endif
     return retval;
 }

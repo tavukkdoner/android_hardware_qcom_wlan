@@ -161,6 +161,48 @@ void nan_pairing_delete_peer_from_list(struct wpa_secure_nan *secure_nan,
     }
 }
 
+bool is_nira_present(struct wpa_secure_nan *secure_nan, const u8 *frame,
+                     size_t len)
+{
+    u16 auth_alg, auth_transaction;
+    const struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) frame;
+
+    if (!mgmt) {
+        ALOGE("%s: PASN mgmt frame NULL", __FUNCTION__);
+        return false;
+    }
+
+    if (os_memcmp(mgmt->da, secure_nan->own_addr, NAN_MAC_ADDR_LEN) != 0) {
+        ALOGE("PASN Responder: Not our frame");
+        return false;
+    }
+
+    auth_alg = le_to_host16(mgmt->u.auth.auth_alg);
+    auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
+
+    if (auth_alg == WLAN_AUTH_PASN && auth_transaction == 1  &&
+        nan_get_attr_from_ies(mgmt->u.auth.variable,
+                        len - offsetof(struct ieee80211_mgmt, u.auth.variable),
+                        NAN_ATTR_ID_NIRA)) {
+        ALOGV("%s: NIRA present", __FUNCTION__);
+        return true;
+    }
+    return false;
+}
+
+struct nan_pairing_peer_info*
+nan_pairing_initialize_peer_for_verification(struct wpa_secure_nan *secure_nan,
+                                             u8 *mac)
+{
+  struct nan_pairing_peer_info* entry;
+
+  entry = nan_pairing_add_peer_to_list(secure_nan, mac);
+  entry->peer_role = SECURE_NAN_PAIRING_INITIATOR;
+  entry->pub_sub_id = secure_nan->pub_sub_id;
+  entry->is_paired = true;
+  return entry;
+}
+
 /* callback handlers registered for nl message send */
 static int error_handler_nan(struct sockaddr_nl *nla, struct nlmsgerr *err,
                          void *arg)
@@ -975,9 +1017,11 @@ int nan_pairing_set_keys_from_cache(wifi_handle handle, u8 *src_addr, u8 *bssid,
         memcpy(evt.npk_security_association.npk.pmk, pasn->pmk,
                pasn->pmk_len);
 
+        wpa_pasn_reset(pasn);
         nanCommand->handleNanPairingConfirm(&evt);
         peer->is_paired = true;
-    } else {
+        peer->is_pairing_in_progress = false;
+    } else if (peer_role == SECURE_NAN_PAIRING_RESPONDER) {
       NanSharedKeyRequest msg;
       if (nan_get_shared_key_descriptor(info, peer->bssid, &msg)) {
           ALOGE("NAN: Unable to get shared key descriptor");
@@ -1233,6 +1277,11 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
         return -1;
     }
 
+    if (is_zero_nan_identity_key(entry->peer_nik)) {
+        ALOGV("Peer NIK not available, Ignore NIRA validation");
+        return 0;
+    }
+
     os_memset(tag, 0, sizeof(tag));
     os_memset(data, 0, sizeof(data));
     os_memcpy(data, "NIR", NIR_STR_LEN);
@@ -1252,6 +1301,19 @@ int nan_pairing_validate_custom_pmkid(void *ctx, const u8 *bssid,
     return 0;
 }
 
+const u8 * get_nan_subattr(const u8 *ies, size_t len, u8 id)
+{
+  const nan_subattr *subattr;
+
+  if (!ies)
+      return NULL;
+
+  for_each_nan_subattr_id(subattr, id, ies, len)
+      return &subattr->id;
+
+  return NULL;
+}
+
 const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr)
 {
   const u8 *nan;
@@ -1263,7 +1325,7 @@ const u8 *nan_attr_from_nan_ie(const u8 *nan_ie, enum nan_attr_id attr)
   }
   nan = nan_ie + NAN_IE_HEADER;
 
-  return get_ie(nan, 2 + ie_len - NAN_IE_HEADER, attr);
+  return get_nan_subattr(nan, 2 + ie_len - NAN_IE_HEADER, attr);
 }
 
 const u8 *nan_get_attr_from_ies(const u8 *ies, size_t ies_len,
@@ -1678,7 +1740,7 @@ fail:
     return;
 }
 
-void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
+void nan_pairing_set_nira(struct wpa_secure_nan *secure_nan)
 {
     int ret;
     struct nanIDkey *nik;
@@ -1691,12 +1753,6 @@ void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
     }
 
     nik = secure_nan->dev_nik;
-
-    ret = random_get_bytes(nik->nik_data, NAN_IDENTITY_KEY_LEN);
-    if (ret < 0) {
-        ALOGE("%s: Get random NIK data Failed, err = %d", __FUNCTION__, ret);
-        return;
-    }
 
     ret = random_get_bytes(nik->nira_nonce, NAN_IDENTITY_NONCE_LEN);
     if (ret < 0) {
@@ -1721,7 +1777,6 @@ void nan_pairing_set_nik_nira(struct wpa_secure_nan *secure_nan)
     }
     os_memcpy(nik->nira_tag, tag, NAN_IDENTITY_TAG_LEN);
 
-    nik->nik_len = NAN_IDENTITY_KEY_LEN;
     nik->nira_nonce_len = NAN_IDENTITY_NONCE_LEN;
     nik->nira_tag_len = NAN_IDENTITY_TAG_LEN;
 }
@@ -1816,6 +1871,21 @@ int secure_nan_init(wifi_interface_handle iface)
     return 0;
 }
 
+int secure_nan_cache_flush(hal_info *info)
+{
+    if(!info->secure_nan) {
+       ALOGE("Secure NAN == NULL");
+       return -1;
+    }
+    if (info->secure_nan->ptksa)
+        ptksa_cache_flush(info->secure_nan->ptksa, NULL, WPA_CIPHER_NONE);
+
+    nan_pairing_initiator_pmksa_cache_flush(info->secure_nan->initiator_pmksa);
+    nan_pairing_responder_pmksa_cache_flush(info->secure_nan->responder_pmksa);
+    nan_pairing_delete_list(info->secure_nan);
+    return 0;
+}
+
 int secure_nan_deinit(hal_info *info)
 {
     if(!info->secure_nan) {
@@ -1876,6 +1946,12 @@ int secure_nan_init(wifi_interface_handle iface)
     return -1;
 }
 
+int secure_nan_cache_flush(hal_info *info)
+{
+    ALOGE("Secure NAN cache flush not supported");
+    return -1;
+}
+
 int secure_nan_deinit(hal_info *info)
 {
     ALOGE("Secure NAN deinit not supported");
@@ -1896,6 +1972,11 @@ wifi_error nan_get_pairing_pmkid(transaction_id id,
 {
     ALOGE("NAN Pairing get PMKID not supported");
     return WIFI_ERROR_NOT_SUPPORTED;
+}
+
+void nan_pairing_set_nira(struct wpa_secure_nan *secure_nan)
+{
+    ALOGE("NAN Pairing set NIRA not supported");
 }
 
 #endif /* WPA_PASN_LIB */
