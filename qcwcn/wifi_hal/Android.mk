@@ -14,6 +14,8 @@
 
 LOCAL_PATH := $(call my-dir)
 
+NAN_VENDOR_AIDL=y
+
 # Control APIs used by clients to communicate with HAL.
 # ============================================================
 include $(CLEAR_VARS)
@@ -50,6 +52,10 @@ endif
 
 ifeq ($(strip $(CONFIG_MAC_PRIVACY_LOGGING)),true)
 LOCAL_CFLAGS += -DCONFIG_MAC_PRIVACY_LOGGING
+endif
+
+ifeq ($(NAN_VENDOR_AIDL),y)
+LOCAL_CFLAGS += -DCONFIG_NAN_VENDOR_AIDL
 endif
 
 # gscan.cpp: address of array 'cached_results[i].results' will always evaluate to 'true'
@@ -92,6 +98,7 @@ endif
 
 LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH) \
+	$(LOCAL_PATH)/vendor_nan \
 	external/libnl/include \
 	$(call include-path-for, libhardware_legacy)/hardware_legacy \
 	external/wpa_supplicant_8/src/drivers \
@@ -132,6 +139,11 @@ LOCAL_SRC_FILES := \
 	nan_pairing.cpp \
 	nan_pairing_responder.cpp \
 	nan_pairing_initiator.cpp
+
+ifeq ($(NAN_VENDOR_AIDL),y)
+LOCAL_SRC_FILES += \
+	vendor_nan/vendor_nan.cpp
+endif
 
 LOCAL_MODULE := libwifi-hal-qcom
 LOCAL_VENDOR_MODULE := true
@@ -176,6 +188,10 @@ ifeq ($(strip $(CONFIG_MAC_PRIVACY_LOGGING)),true)
 LOCAL_CFLAGS += -DCONFIG_MAC_PRIVACY_LOGGING
 endif
 
+ifeq ($(NAN_VENDOR_AIDL),y)
+LOCAL_CFLAGS += -DCONFIG_NAN_VENDOR_AIDL
+endif
+
 ifeq ($(NAN_PAIRING),y)
 ifeq ($(CONFIG_PASN),y)
 LOCAL_CFLAGS += -DWPA_PASN_LIB
@@ -214,6 +230,7 @@ endif
 
 LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH) \
+	$(LOCAL_PATH)/vendor_nan \
 	external/libnl/include \
 	$(call include-path-for, libhardware_legacy)/hardware_legacy \
 	external/wpa_supplicant_8/src/drivers \
@@ -254,6 +271,11 @@ LOCAL_SRC_FILES := \
 	nan_pairing.cpp \
 	nan_pairing_responder.cpp \
 	nan_pairing_initiator.cpp
+
+ifeq ($(NAN_VENDOR_AIDL),y)
+LOCAL_SRC_FILES += \
+	vendor_nan/vendor_nan.cpp
+endif
 
 LOCAL_CFLAGS += -Wall -Werror
 LOCAL_MODULE := libwifi-hal-qcom
