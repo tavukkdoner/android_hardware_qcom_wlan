@@ -104,7 +104,6 @@ LOCAL_C_INCLUDES += \
 	external/wpa_supplicant_8/src/drivers \
 	external/wpa_supplicant_8/src \
 	external/wpa_supplicant_8/src/utils \
-	$(TARGET_OUT_HEADERS)/cld80211-lib
 
 LOCAL_C_INCLUDES += \
 	external/boringssl/include \
@@ -236,7 +235,6 @@ LOCAL_C_INCLUDES += \
 	external/wpa_supplicant_8/src/drivers \
 	external/wpa_supplicant_8/src \
 	external/wpa_supplicant_8/src/utils \
-	$(TARGET_OUT_HEADERS)/cld80211-lib
 
 LOCAL_C_INCLUDES += \
 	external/boringssl/include \
