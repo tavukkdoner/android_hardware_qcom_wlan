@@ -1512,11 +1512,13 @@ wifi_error wifi_initialize(wifi_handle *handle)
 
     if (nan_register_action_frames(iface_handle)) {
         ALOGE("%s: registering NAN action frame failed", __FUNCTION__);
+        ret = WIFI_ERROR_UNKNOWN;
         goto unload;
     }
 
     if (nan_register_action_dual_protected_frames(iface_handle)) {
         ALOGE("%s: registering NAN action dual protected frame failed", __FUNCTION__);
+        ret = WIFI_ERROR_UNKNOWN;
         goto unload;
     }
 
@@ -4147,6 +4149,8 @@ void wifihal_event_mgmt_tx_status(wifi_handle handle, struct nlattr *cookie,
     }
 }
 
+#endif /* WPA_PASN_LIB */
+
 void wifihal_event_mgmt(wifi_handle handle, struct nlattr *freq, const u8 *frame,
                         size_t len)
 {
@@ -4165,11 +4169,12 @@ void wifihal_event_mgmt(wifi_handle handle, struct nlattr *freq, const u8 *frame
         return;
     }
 
-    if (stype == WLAN_FC_STYPE_AUTH)
-        nan_rx_mgmt_auth(handle, frame, len);
-    else if (stype == WLAN_FC_STYPE_ACTION)
+    if (stype == WLAN_FC_STYPE_ACTION)
         nan_rx_mgmt_action(handle, frame, len);
+#ifdef WPA_PASN_LIB
+    else if (stype == WLAN_FC_STYPE_AUTH)
+        nan_rx_mgmt_auth(handle, frame, len);
+#endif /* WPA_PASN_LIB */
 
     return;
 }
-#endif /* WPA_PASN_LIB */
