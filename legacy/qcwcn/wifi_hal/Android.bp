@@ -96,10 +96,10 @@ cc_library {
     },
     header_libs: [
         "libcutils_headers",
-        "libhardware_legacy_headers",
         "libnetlink_iface_headers",
         "libutils_headers",
         "libwifi-hal-ctrl_headers",
+        "wifi_legacy_headers",
     ],
     local_include_dirs: ["."],
     srcs: [
