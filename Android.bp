@@ -67,10 +67,10 @@ wifihal_qcom_defaults {
             },
             wcn3990: {
                 whole_static_libs: [
-                    "//hardware/qcom/sw5100/wlan:libwifi-hal-qcom",
+                    "//hardware/qcom/sw5100/wlan/qcwcn/wifi_hal:libwifi-hal-qcom",
                 ],
                 shared_libs: [
-                    "//hardware/qcom/sw5100/wlan:libcld80211",
+                    "//hardware/qcom/sw5100/wlan/cld80211-lib:libcld80211",
                     "libcrypto",
                 ],
             },
