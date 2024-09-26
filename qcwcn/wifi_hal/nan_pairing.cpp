@@ -1343,6 +1343,7 @@ wifi_error nan_validate_shared_key_desc(hal_info *info, const u8 *addr, u8 *buf,
              bigtk_lifetime_kde = (struct bigtkLifetime *)nan_kde->data;
              ALOGV("%s: received BIGTK Lifetime: %d", __FUNCTION__,
                    bigtk_lifetime_kde->lifetime);
+             break;
         default:
            ALOGE("NAN: Invalid Shared key KDE, DataType=%d", nan_kde->dataType);
            break;
