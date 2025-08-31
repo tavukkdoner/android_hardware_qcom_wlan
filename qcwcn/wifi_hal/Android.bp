@@ -121,7 +121,7 @@ cc_library {
         "-Werror",
         // gscan.cpp: address of array 'cached_results[i].results' will always evaluate to 'true'
         "-Wno-pointer-bool-conversion",
-        "-DCONFIG_NAN_VENDOR_AIDL",
+        // "-DCONFIG_NAN_VENDOR_AIDL",
     ],
     product_variables: {
         eng: {
